@@ -1,0 +1,31 @@
+{
+  "name": "verba-extension",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Verba — Cross-browser language immersion reader, adaptive placement test, and dual-caption video companion for Chrome and Firefox",
+  "scripts": {
+    "build:icons": "node scripts/build-icons.mjs",
+    "build:dicts": "node scripts/build-dictionaries.mjs",
+    "build:js": "node scripts/build.mjs",
+    "build": "npm run build:icons && npm run build:dicts && npm run build:js",
+    "package:firefox": "node scripts/package-firefox.mjs",
+    "lint:firefox": "npx addons-linter dist/verba-firefox.zip",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --test tests/unit/*.test.mjs",
+    "test:e2e": "node tests/e2e/extension.e2e.mjs",
+    "test": "npm run typecheck && npm run test:unit && npm run test:e2e"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "pdfjs-dist": "^4.10.38"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/chrome": "^0.0.300",
+    "@types/node": "^22.13.4",
+    "esbuild": "^0.25.0",
+    "playwright": "^1.58.2",
+    "typescript": "^5.7.3"
+  }
+}

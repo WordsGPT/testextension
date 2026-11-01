@@ -1,0 +1,19 @@
+1
+00:00:00,400 --> 00:00:04,000
+C'era una volta un piccolo pezzo di legno nella bottega.
+
+2
+00:00:04,200 --> 00:00:08,000
+Geppetto voleva leggere un libro nuovo e parlare con Pinocchio.
+
+3
+00:00:08,200 --> 00:00:12,000
+Ogni parola della storia diventa chiara quando ascolti la voce.
+
+4
+00:00:12,200 --> 00:00:16,500
+La mattina il sole illumina la strada e la piazza della città.
+
+5
+00:00:16,700 --> 00:00:21,000
+Imparare una lingua nuova porta sempre grande gioia.

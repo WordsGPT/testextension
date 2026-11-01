@@ -1,0 +1,19 @@
+1
+00:00:00,400 --> 00:00:04,000
+Once upon a time there was a little piece of wood in the workshop.
+
+2
+00:00:04,200 --> 00:00:08,000
+Geppetto wanted to read a new book and speak with Pinocchio.
+
+3
+00:00:08,200 --> 00:00:12,000
+Every word of the story becomes clear when you listen to the voice.
+
+4
+00:00:12,200 --> 00:00:16,500
+In the morning the sun lights up the street and the city square.
+
+5
+00:00:16,700 --> 00:00:21,000
+Learning a new language always brings great joy.

@@ -1,0 +1,250 @@
+import type { ReadingKeymap, VerbaSettings, VideoKeymap } from './types';
+import { getDefaultLangOptions } from './languages';
+
+export const DEFAULT_READING_KEYMAP: ReadingKeymap = {
+  grade1: '1',
+  grade2: '2',
+  grade3: '3',
+  grade4: '4',
+  known: 'k',
+  ignore: 'x',
+  resetNew: '0',
+  aiCheck: 'a',
+  speakWord: 'v',
+  speakSentence: 'Shift+V',
+  customMeaning: 'm',
+  googleTranslate: 'g',
+  dictLink: 't',
+  charactersTab: 'b',
+  nextEntry: 'n',
+  prevEntry: 'Shift+N',
+  listEntries: 'l',
+  ankiAdd: 'p',
+  ankiPick: 'Shift+P',
+  askAiChat: 'Shift+I',
+  nextWord: 'ArrowRight',
+  prevWord: 'ArrowLeft',
+  openKnownUp: 'ArrowUp',
+  closeDown: 'ArrowDown',
+  markPageKnown: 'Shift+K',
+  toggleHighlights: 'Shift+H',
+  readAloud: 'Shift+R',
+  openReaderView: 'Shift+L',
+  sentenceMode: 'Shift+S',
+  nextFreqSentence: 'Shift+D',
+  prevFreqSentence: 'Shift+A',
+  nextUnknownSentence: 'Shift+E',
+  prevUnknownSentence: 'Shift+Q',
+};
+
+export const DEFAULT_VIDEO_KEYMAP: VideoKeymap = {
+  toggleCaptions: 'c',
+  prevLine: 'a',
+  replayLine: 's',
+  nextLine: 'd',
+  autoPause: 'q',
+  peekForward: 'e',
+  peekBackward: 'z',
+  hideKnownLines: 'h',
+  cycleBandFilter: 'r',
+  wordsInVideo: 'w',
+  subEarlier: ',',
+  subLater: '.',
+  nextFreqLine: 'Shift+D',
+  prevFreqLine: 'Shift+A',
+  hopCommonDown: 'Shift+Alt+D',
+  hopCommonUp: 'Shift+Alt+A',
+  nextUnknownLine: 'Shift+E',
+  prevUnknownLine: 'Shift+Q',
+  markLineKnown: 'Shift+K',
+};
+
+export const UI_LANGUAGES = [
+  { code: 'en', name: 'English' },
+  { code: 'de', name: 'Deutsch' },
+  { code: 'fr', name: 'Français' },
+  { code: 'es', name: 'Español' },
+  { code: 'it', name: 'Italiano' },
+  { code: 'pt', name: 'Português' },
+  { code: 'sv', name: 'Svenska' },
+  { code: 'pl', name: 'Polski' },
+  { code: 'ru', name: 'Русский' },
+  { code: 'zh', name: '中文' },
+  { code: 'ja', name: '日本語' },
+  { code: 'ko', name: '한국어' },
+  { code: 'ar', name: 'العربية' },
+];
+
+export const DEFAULT_ASK_AI_PROMPT = `I am reading in {language} ({title}).
+Please explain this sentence naturally and break down any idiomatic or grammatical nuances:
+
+"{sentence}"
+
+Context around it:
+{context}`;
+
+export function generatePairingCode(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  if (!/[A-Z]/.test(code)) code = 'V' + code.slice(1);
+  if (!/[2-9]/.test(code)) code = code.slice(0, 7) + '7';
+  return code;
+}
+
+export function createDefaultSettings(): VerbaSettings {
+  const deviceId = 'dev_' + Math.random().toString(36).slice(2, 10);
+  return {
+    deviceId,
+    onboarded: false,
+    profileName: 'Reader',
+
+    activeLang: 'it',
+    learningLangs: ['it', 'zh', 'ja', 'es', 'de', 'fr'],
+    polyglotOrder: ['it', 'zh', 'ja', 'es', 'de', 'fr'],
+    autoSwitchPageLang: true,
+    selectLookupEnabled: true,
+    perLang: {
+      it: getDefaultLangOptions('it'),
+      zh: getDefaultLangOptions('zh'),
+      ja: getDefaultLangOptions('ja'),
+      es: getDefaultLangOptions('es'),
+      de: getDefaultLangOptions('de'),
+      fr: getDefaultLangOptions('fr'),
+    },
+
+    runOnWebPages: true,
+    pausedTabIds: [],
+    forceEnabledUrls: [],
+    neverRunDomains: ['mail.google.com', 'docs.google.com', 'outlook.live.com'],
+    showPageCounter: true,
+    languageSwitcherOnPage: true,
+    gradeByHovering: true,
+    hoverDelayMs: 140,
+    clickNewStartsLearning: true,
+    linksStayClickable: true,
+    contextMeaningFirst: true,
+    entriesOneAtATime: true,
+    translateMissingWords: true,
+    countWordsReadWhere: 'everywhere',
+    pdfDefaultMode: 'fit_phones',
+    readerFont: 'serif',
+    customFontName: '',
+    readerTheme: 'dark',
+    readerFontSize: 19,
+    dailyReadingGoalWords: 500,
+    dailyListeningGoalMin: 10,
+    dayEndsAtHour: 0,
+    readingKeymap: { ...DEFAULT_READING_KEYMAP },
+    videoKeymap: { ...DEFAULT_VIDEO_KEYMAP },
+
+    theme: 'dark',
+    uiLanguage: 'en',
+    highlightWords: true,
+    specialWordsHighlight: false,
+    underlineInsteadOfFill: false,
+    highlightStrength: 1.0,
+    colors: {
+      newWord: '#38bdf8',
+      learning: '#f59e0b',
+      crossScript: '#10b981',
+      selectedPhrase: '#f97316',
+      specialWord: '#a855f7',
+    },
+    wordPanel: {
+      size: 'M',
+      showReading: true,
+      dictLinksInline: false,
+      compactSpacing: false,
+      showGradeButtons: true,
+    },
+
+    voiceBackend: 'device',
+    cloudVoiceProvider: 'gemini',
+    cloudVoiceApiKey: '',
+    localVoiceServerUrl: 'http://localhost:8880',
+    voiceSpeed: 1.0,
+    voiceVolume: 1.0,
+    sayWordOnOpen: false,
+    sayWordOnArrow: false,
+
+    smartListeningTracking: true,
+    showTabCountedChip: true,
+    askUnsureTrackLang: true,
+    youtubeThumbnailCounts: true,
+    ignoredListeningDomains: [],
+
+    captionsEnabled: true,
+    subtitleMode: 'show',
+    translationMode: 'blur',
+    inlineWordMeanings: 'off',
+    sharpWordsWithMeaning: true,
+    colorsThroughBlur: true,
+    hideKnownLines: false,
+    vocabBandFilter: 'all',
+    autoPauseEachLine: false,
+    autoPauseOnlyNewWords: false,
+    autoResumeOnKnown: true,
+    pauseOnLookup: false,
+    pauseOnLookupDelayMs: 400,
+    googleTranslateMissingSubs: true,
+    subtitleSize: 'M',
+    translationSize: 'M',
+    subtitleFont: 'sans',
+    subtitleBgOpacity: 75,
+    karaokeMode: false,
+    showActionNotes: true,
+    subtitleVerticalPct: 82,
+
+    gamepadEnabled: true,
+    swapABXY: false,
+    pageScrollPx: 320,
+
+    aiCheckEnabled: false,
+    aiIncludeSentence: true,
+    aiProvider: 'gemini',
+    aiApiKey: '',
+    aiModel: 'gemini-2.5-flash',
+    aiWorkspaceId: '',
+    aiCustomRequest: '',
+    askAiChatProvider: 'chatgpt',
+    askAiChatCustomUrl: '',
+    askAiChatPromptTemplate: DEFAULT_ASK_AI_PROMPT,
+
+    ankiConnectPort: 8765,
+    ankiSendAllLearning: false,
+    ankiLevelsToSend: [1, 2, 3, 4],
+    ankiShowButtonInPanel: true,
+    ankiTags: 'verba',
+    ankiMarkKnownOnMature: false,
+    ankiMatureDays: 21,
+    ankiSuspendWhenKnown: true,
+    ankiVideoMedia: 'audio_clip',
+    ankiIncludeSurroundingLines: false,
+    ankiVoiceWord: false,
+    ankiVoiceSentence: false,
+    ankiCardLayout: {
+      word: 'front',
+      reading: 'back',
+      pitch: 'off',
+      meaning: 'back',
+      sentence: 'back',
+      sentenceTranslation: 'off',
+      picture: 'back',
+      wordAudio: 'back',
+      sentenceAudio: 'back',
+    },
+
+    syncPairingCode: generatePairingCode(),
+    syncPeerUrl: '',
+    syncSendBookFiles: true,
+    syncMaxBookSizeMb: 100,
+    pairedDevices: [],
+    autoBackupEnabled: false,
+    backupKeyLockedHash: '',
+    lastBackupAt: 0,
+    updatedAt: Date.now(),
+  };
+}
