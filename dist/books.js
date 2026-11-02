@@ -1084,6 +1084,297 @@ function applyGermanSeparableVerbs(tokens, lang) {
   }
 }
 
+// src/shared/diglot.ts
+var FUNCTION_POS = /* @__PURE__ */ new Set(["art.", "prep.", "conj.", "part.", "pron.", "prop."]);
+var AMBIGUOUS_ENGLISH_GLOSSES = /* @__PURE__ */ new Set([
+  "the",
+  "a",
+  "an",
+  "to",
+  "of",
+  "in",
+  "into",
+  "on",
+  "upon",
+  "at",
+  "by",
+  "for",
+  "with",
+  "from",
+  "about",
+  "and",
+  "or",
+  "but",
+  "not",
+  "no",
+  "yes",
+  "that",
+  "this",
+  "these",
+  "those",
+  "which",
+  "who",
+  "what",
+  "be",
+  "is",
+  "am",
+  "are",
+  "was",
+  "were",
+  "been",
+  "being",
+  "have",
+  "has",
+  "had",
+  "do",
+  "does",
+  "did",
+  "make",
+  "go",
+  "come",
+  "get",
+  "take",
+  "put",
+  "give",
+  "say",
+  "tell",
+  "see",
+  "know",
+  "can",
+  "will",
+  "would",
+  "should",
+  "may",
+  "might",
+  "all",
+  "whole",
+  "other",
+  "another",
+  "else",
+  "same",
+  "self",
+  "very",
+  "much",
+  "lot",
+  "more",
+  "most",
+  "some",
+  "any",
+  "one",
+  "two",
+  "still",
+  "yet",
+  "again",
+  "well",
+  "then",
+  "way",
+  "manner",
+  "part",
+  "case",
+  "point",
+  "state",
+  "fact",
+  "thing"
+]);
+function posPriority(pos) {
+  if (!pos) return 3;
+  if (pos.startsWith("n")) return 1;
+  if (pos.startsWith("adj")) return 2;
+  if (pos.startsWith("adv")) return 3;
+  if (pos.startsWith("v")) return 4;
+  return 5;
+}
+function buildEnglishGlossIndex(entries) {
+  const byGloss = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    if (!entry.w || !entry.m || entry.m.length === 0) continue;
+    if (entry.special === "name" || entry.special === "place") continue;
+    if (entry.pos && FUNCTION_POS.has(entry.pos)) continue;
+    if (/vocabulary item #\d+/i.test(entry.m[0] || "")) continue;
+    for (const rawM of entry.m) {
+      const stripped = rawM.replace(/\([^)]*\)/g, " ");
+      const parts = stripped.split(/[;,/]/);
+      for (const part of parts) {
+        let cleaned = part.trim().toLowerCase();
+        if (cleaned.startsWith("to ") && entry.pos?.startsWith("v")) {
+          cleaned = cleaned.slice(3).trim();
+        } else if (cleaned.startsWith("the ")) {
+          cleaned = cleaned.slice(4).trim();
+        } else if (cleaned.startsWith("a ") || cleaned.startsWith("an ")) {
+          cleaned = cleaned.replace(/^an?\s+/, "").trim();
+        }
+        if (!/^[a-z]{3,24}$/.test(cleaned)) continue;
+        if (AMBIGUOUS_ENGLISH_GLOSSES.has(cleaned)) continue;
+        if (entry.pos?.startsWith("v") && cleaned.length < 4) continue;
+        const list = byGloss.get(cleaned);
+        if (list) {
+          if (!list.includes(entry)) list.push(entry);
+        } else {
+          byGloss.set(cleaned, [entry]);
+        }
+      }
+    }
+  }
+  for (const [gloss, list] of byGloss.entries()) {
+    list.sort((a, b) => {
+      const posDiff = posPriority(a.pos) - posPriority(b.pos);
+      if (posDiff !== 0) return posDiff;
+      return (a.rank ?? 999999) - (b.rank ?? 999999);
+    });
+    byGloss.set(gloss, list);
+  }
+  return byGloss;
+}
+function matchEnglishTokenToTarget(rawToken, dictIndex) {
+  if (!rawToken || rawToken.length < 3 || !/^[A-Za-z]+$/.test(rawToken)) return null;
+  if (rawToken.length >= 2 && rawToken === rawToken.toUpperCase()) return null;
+  const lower = rawToken.toLowerCase();
+  if (AMBIGUOUS_ENGLISH_GLOSSES.has(lower)) return null;
+  const isCapitalized = rawToken[0] === rawToken[0].toUpperCase() && rawToken[0] !== rawToken[0].toLowerCase();
+  const direct = dictIndex.byEnglishGloss.get(lower);
+  if (direct && direct.length > 0) {
+    return {
+      lemma: lower,
+      isPlural: false,
+      isCapitalized,
+      candidates: direct
+    };
+  }
+  if (lower.length >= 4 && lower.endsWith("s") && !lower.endsWith("ss") && !lower.endsWith("us") && !lower.endsWith("is")) {
+    const singularCandidates = [];
+    if (lower.endsWith("ies") && lower.length >= 5) {
+      singularCandidates.push(lower.slice(0, -3) + "y");
+    }
+    if (lower.endsWith("es") && lower.length >= 5) {
+      singularCandidates.push(lower.slice(0, -2));
+      singularCandidates.push(lower.slice(0, -1));
+    }
+    singularCandidates.push(lower.slice(0, -1));
+    for (const sing of singularCandidates) {
+      if (AMBIGUOUS_ENGLISH_GLOSSES.has(sing)) continue;
+      const entries = dictIndex.byEnglishGloss.get(sing);
+      if (entries && entries.length > 0) {
+        const nounEntries = entries.filter((e) => !e.pos || e.pos.startsWith("n"));
+        if (nounEntries.length > 0) {
+          return {
+            lemma: sing,
+            isPlural: true,
+            isCapitalized,
+            candidates: nounEntries
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+function selectBestDiglotEntry(candidates, wordMap, settings) {
+  const pool = settings.inlineReplacementPool || "learning_and_new";
+  const maxRank = settings.inlineReplacementMaxRank || 3e3;
+  const eligible = [];
+  for (const entry of candidates) {
+    const rec = wordMap.get(entry.w);
+    const status = rec && !rec.deleted ? rec.status : 0;
+    if (status === -1) continue;
+    if (pool === "learning_only" && !(status >= 1 && status <= 4)) continue;
+    if (pool === "learning_and_new" && status === 5) continue;
+    if (status === 0 && maxRank > 0 && entry.rank && entry.rank > maxRank) {
+      continue;
+    }
+    const learningBoost = status >= 1 && status <= 4 ? 1e4 : 0;
+    const nounBoost = entry.pos?.startsWith("n") ? 1e3 : entry.pos?.startsWith("adj") ? 500 : 0;
+    const rankScore = Math.max(0, 2e3 - (entry.rank ?? 1e3));
+    eligible.push({
+      entry,
+      status,
+      score: learningBoost + nounBoost + rankScore
+    });
+  }
+  if (eligible.length === 0) return null;
+  eligible.sort((a, b) => b.score - a.score);
+  return { entry: eligible[0].entry, status: eligible[0].status };
+}
+function formatDiglotTargetSurface(entry, lang, isPlural, isCapitalized) {
+  let surface = entry.w;
+  if (isPlural && entry.pos?.startsWith("n") && entry.forms && entry.forms.length === 1) {
+    surface = entry.forms[0];
+  }
+  if (isCapitalized && lang !== "de" && /^[a-zà-žа-яіїєґα-ω]/.test(surface)) {
+    surface = surface[0].toUpperCase() + surface.slice(1);
+  }
+  return surface;
+}
+function weaveDiglotSegment(text, lang, dictIndex, wordMap, settings, pageWovenCounts) {
+  if (lang === "en") {
+    return [{ isReplaced: false, text }];
+  }
+  const rawParts = text.split(/([A-Za-z]+(?:'[A-Za-z]+)?)/g);
+  const tokens = [];
+  const candidateSlots = [];
+  let totalWords = 0;
+  for (let i = 0; i < rawParts.length; i++) {
+    const part = rawParts[i];
+    if (!part) continue;
+    if (/^[A-Za-z]+$/.test(part)) {
+      const currentWordIdx = totalWords++;
+      const tokenIdx = tokens.length;
+      tokens.push({ isReplaced: false, text: part });
+      const match = matchEnglishTokenToTarget(part, dictIndex);
+      if (match) {
+        const chosen = selectBestDiglotEntry(match.candidates, wordMap, settings);
+        if (chosen) {
+          candidateSlots.push({
+            tokenIdx,
+            wordIdx: currentWordIdx,
+            rawWord: part,
+            match,
+            chosen
+          });
+        }
+      }
+    } else {
+      tokens.push({ isReplaced: false, text: part });
+    }
+  }
+  if (candidateSlots.length === 0 || totalWords < 2) {
+    return tokens;
+  }
+  const density = Math.max(1, Math.min(60, settings.inlineReplacementDensityPct || 15)) / 100;
+  const maxReplacements = Math.max(1, Math.round(totalWords * density));
+  const minWordGap = totalWords <= 8 ? 2 : 3;
+  let replacedInBlock = 0;
+  let lastReplacedWordIdx = -999;
+  for (const slot of candidateSlots) {
+    if (replacedInBlock >= maxReplacements) break;
+    if (slot.wordIdx - lastReplacedWordIdx < minWordGap) continue;
+    const targetKey = slot.chosen.entry.w;
+    const prevPageCount = pageWovenCounts?.get(targetKey) || 0;
+    if (prevPageCount >= 3) continue;
+    const surface = formatDiglotTargetSurface(
+      slot.chosen.entry,
+      lang,
+      slot.match.isPlural,
+      slot.match.isCapitalized
+    );
+    tokens[slot.tokenIdx] = {
+      isReplaced: true,
+      text: surface,
+      originalText: slot.rawWord,
+      targetSurface: surface,
+      targetWord: slot.chosen.entry.w,
+      targetLemma: slot.chosen.entry.w,
+      entry: slot.chosen.entry,
+      status: slot.chosen.status
+    };
+    lastReplacedWordIdx = slot.wordIdx;
+    replacedInBlock++;
+    if (pageWovenCounts) {
+      pageWovenCounts.set(targetKey, prevPageCount + 1);
+    }
+  }
+  return tokens;
+}
+
 // src/shared/dictionary.ts
 var indexCache = /* @__PURE__ */ new Map();
 function buildLangIndex(dict) {
@@ -1124,12 +1415,14 @@ function buildLangIndex(dict) {
     }
   }
   const byRank = [...dict.entries].sort((a, b) => (a.rank ?? 999999) - (b.rank ?? 999999));
+  const byEnglishGloss = buildEnglishGlossIndex(dict.entries);
   const loaded = {
     lang: dict.lang,
     entries: dict.entries,
     byHeadword,
     byForm,
     byAltScript,
+    byEnglishGloss,
     byRank,
     lexiconSet,
     chars: dict.chars || {}
@@ -1459,6 +1752,19 @@ verba-w ruby.verba-ruby > rt {
   font-weight: 400;
   user-select: none;
 }
+verba-w[data-diglot="1"] {
+  border-bottom: 1.5px dashed rgb(16 185 129 / 0.8);
+  padding: 0 2px;
+}
+${settings.inlineReplacementShowHint ? `
+verba-w[data-diglot="1"][data-orig]::after {
+  content: " \xB7 " attr(data-orig);
+  font-size: 0.74em;
+  opacity: 0.68;
+  font-weight: 400;
+  user-select: none;
+}
+` : ""}
 [data-verba-reading-sentence="1"] {
   text-decoration: underline;
   text-decoration-color: #38bdf8;
@@ -1559,6 +1865,11 @@ button {
   transition: background 0.12s;
 }
 .island-btn:hover { background: var(--fill-press); }
+.island-btn.active {
+  background: rgb(16 185 129 / .22);
+  color: #6ee7b7;
+  box-shadow: inset 0 0 0 1px rgb(16 185 129 / .45);
+}
 .island-dot {
   width: 8px;
   height: 8px;
@@ -1567,6 +1878,7 @@ button {
 }
 .island-dot.new { background: #3b82f6; }
 .island-dot.learn { background: #f7a800; }
+.island-dot.diglot { background: #10b981; }
 .island-stat {
   display: inline-flex;
   align-items: center;
@@ -1714,6 +2026,19 @@ button {
   margin-top: 4px;
   font-size: 0.9em;
   color: var(--ink-2);
+}
+.wp-diglot-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: rgb(16 185 129 / .14);
+  border: 1px solid rgb(16 185 129 / .35);
+  color: #a7f3d0;
+  font-size: 12px;
 }
 .wp-pitch {
   font-family: var(--mono);
@@ -2259,6 +2584,7 @@ var VerbaHighlighter = class {
   dictIndex;
   wordMap = /* @__PURE__ */ new Map();
   customDicts = [];
+  diglotMode = false;
   onCountsChanged;
   rootContainer;
   isBookOrReader;
@@ -2270,6 +2596,7 @@ var VerbaHighlighter = class {
     this.customDicts = params.customDicts || [];
     this.rootContainer = params.rootContainer || document.body;
     this.isBookOrReader = Boolean(params.isBookOrReader);
+    this.diglotMode = Boolean(params.diglotMode);
     this.onCountsChanged = params.onCountsChanged;
     this.setWords(params.words);
   }
@@ -2367,6 +2694,10 @@ var VerbaHighlighter = class {
     return { statusAttr, readingHtml };
   }
   scanAndHighlight(root = this.rootContainer) {
+    if (this.diglotMode && !this.isBookOrReader) {
+      this.scanAndWeaveDiglot(root);
+      return;
+    }
     const { lexicon, phrases, overrides } = this.getPhrasesAndCustomLexicon();
     const textNodes = [];
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -2434,12 +2765,114 @@ var VerbaHighlighter = class {
     this.emitCounts();
   }
   /**
+   * Inline Word Replacement ("Diglot Weave" / Passive Immersion):
+   * Scans L1 text nodes and weaves target-language (L2) vocabulary in place while preserving L1 context.
+   */
+  scanAndWeaveDiglot(root = this.rootContainer) {
+    if (!this.settings.inlineReplacementEnabled && !this.diglotMode) return;
+    const pageWovenCounts = /* @__PURE__ */ new Map();
+    for (const existing of Array.from(this.rootContainer.querySelectorAll('verba-w[data-diglot="1"]'))) {
+      const k = existing.dataset.key || existing.dataset.w || "";
+      if (k) pageWovenCounts.set(k, (pageWovenCounts.get(k) || 0) + 1);
+    }
+    const textNodes = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => {
+        const parent = node.parentElement;
+        if (!parent) return NodeFilter.FILTER_REJECT;
+        if (SKIP_TAGS.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
+        if (parent.closest(
+          'a, button, [role="link"], [role="button"], verba-w, #verba-ui-root, [data-verba-ignore="1"], [contenteditable="true"], code, pre, script, style, rt'
+        )) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        const val = node.nodeValue || "";
+        if (!/[A-Za-z]{3,}/.test(val)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    let current;
+    while (current = walker.nextNode()) {
+      textNodes.push(current);
+    }
+    for (const textNode of textNodes) {
+      const text = textNode.nodeValue || "";
+      const tokens = weaveDiglotSegment(
+        text,
+        this.lang,
+        this.dictIndex,
+        this.wordMap,
+        this.settings,
+        pageWovenCounts
+      );
+      if (!tokens.some((t) => t.isReplaced)) continue;
+      const frag = document.createDocumentFragment();
+      for (const tok of tokens) {
+        if (!tok.isReplaced || !tok.targetSurface || !tok.targetWord) {
+          frag.appendChild(document.createTextNode(tok.text));
+          continue;
+        }
+        const key = tok.targetWord;
+        const { statusAttr, readingHtml } = this.computeStatusAttr(key, tok.targetSurface, tok.targetLemma);
+        const el = document.createElement("verba-w");
+        el.dataset.diglot = "1";
+        el.dataset.orig = tok.originalText || tok.text;
+        el.dataset.w = tok.targetWord;
+        el.dataset.key = key;
+        el.dataset.s = statusAttr;
+        if (tok.targetLemma) el.dataset.lemma = tok.targetLemma;
+        if (tok.entry?.rank) el.dataset.rank = String(tok.entry.rank);
+        const insideNativeRuby = Boolean(textNode.parentElement?.closest("ruby"));
+        if (readingHtml && !insideNativeRuby) {
+          el.innerHTML = readingHtml;
+        } else {
+          el.textContent = tok.targetSurface;
+        }
+        frag.appendChild(el);
+      }
+      textNode.parentNode?.replaceChild(frag, textNode);
+    }
+    this.setupHonestReadingObserver(root);
+    this.emitCounts();
+  }
+  /**
+   * Reverts a single inline-replaced <verba-w data-diglot="1"> element back to its original L1 word.
+   */
+  revertDiglotElement(el) {
+    const orig = el.dataset.orig || el.dataset.w || el.textContent || "";
+    const parent = el.parentNode;
+    el.replaceWith(document.createTextNode(orig));
+    parent?.normalize();
+    this.emitCounts();
+  }
+  /**
+   * Toggles Inline Word Replacement (Diglot Weave) mode on the current page.
+   */
+  toggleDiglotMode(forceState) {
+    const nextState = forceState !== void 0 ? forceState : !this.diglotMode;
+    const wrappers = Array.from(this.rootContainer.querySelectorAll("verba-w"));
+    const parents = /* @__PURE__ */ new Set();
+    for (const w of wrappers) {
+      const raw = w.dataset.orig || w.dataset.w || w.textContent || "";
+      if (w.parentNode) parents.add(w.parentNode);
+      w.replaceWith(document.createTextNode(raw));
+    }
+    for (const p of parents) p.normalize();
+    this.diglotMode = nextState;
+    if (this.diglotMode) {
+      this.scanAndWeaveDiglot(this.rootContainer);
+    } else {
+      this.emitCounts();
+    }
+    return this.diglotMode;
+  }
+  /**
    * Re-renders a paragraph cleanly (e.g. when user merges characters into a custom word or splits one).
    */
   rehighlightContainer(container) {
     const wrappers = Array.from(container.querySelectorAll("verba-w"));
     for (const w of wrappers) {
-      const raw = w.dataset.w || w.textContent || "";
+      const raw = w.dataset.orig || w.dataset.w || w.textContent || "";
       w.replaceWith(document.createTextNode(raw));
     }
     container.normalize();
@@ -2465,6 +2898,10 @@ var VerbaHighlighter = class {
       const key = el.dataset.key || surface;
       const lemmaHint = el.dataset.lemma;
       const { statusAttr, readingHtml } = this.computeStatusAttr(key, surface, lemmaHint);
+      if (el.dataset.diglot === "1" && statusAttr === "-1") {
+        this.revertDiglotElement(el);
+        continue;
+      }
       el.dataset.s = statusAttr;
       const insideNativeRuby = Boolean(el.parentElement?.closest("ruby:not(.verba-ruby)"));
       if (readingHtml && !insideNativeRuby) {
@@ -2479,8 +2916,10 @@ var VerbaHighlighter = class {
     const newSet = /* @__PURE__ */ new Set();
     const learnSet = /* @__PURE__ */ new Set();
     const knownSet = /* @__PURE__ */ new Set();
+    let diglotWords = 0;
     const elements = this.rootContainer.querySelectorAll("verba-w");
     for (const el of Array.from(elements)) {
+      if (el.dataset.diglot === "1") diglotWords++;
       const key = el.dataset.key || el.dataset.w || "";
       if (!key) continue;
       const s = el.dataset.s;
@@ -2492,6 +2931,7 @@ var VerbaHighlighter = class {
       newWords: newSet.size,
       learningWords: learnSet.size,
       knownWordsOnPage: knownSet.size,
+      diglotWords,
       allBlueKeys: Array.from(newSet)
     };
   }
@@ -3066,6 +3506,11 @@ var VerbaWordPanel = class {
             ${lk.record?.lookupCount ? `<span>\u{1F440} ${lk.record.lookupCount}</span>` : ""}
           </div>` : "";
     const toastHtml = this.statusToast ? `<div style="margin-top:6px;font-size:12px;color:#93c5fd;">${esc(this.statusToast)}</div>` : "";
+    const diglotOrig = this.activeElement?.dataset.diglot === "1" ? this.activeElement.dataset.orig || "" : "";
+    const diglotBannerHtml = diglotOrig ? `<div class="wp-diglot-banner" id="wp-diglot-banner">
+          <span>\u21C4 Woven in place of <b>"${esc(diglotOrig)}"</b></span>
+          <button type="button" class="wp-btn-ghost" id="wp-diglot-revert" style="height:22px;padding:0 8px;font-size:11px;">Revert</button>
+        </div>` : "";
     this.el.innerHTML = `
       <div class="wp-top">
         <div class="wp-head">
@@ -3080,6 +3525,7 @@ var VerbaWordPanel = class {
         ${pitchHtml}
         ${rankHtml}
       </div>
+      ${diglotBannerHtml}
       ${tabsHtml}
       ${this.activeTab === "characters" ? charactersBodyHtml : `
             <ul class="wp-meanings">${meaningItemsHtml.join("")}</ul>
@@ -3265,6 +3711,12 @@ var VerbaWordPanel = class {
       });
     });
     this.el.querySelector("#wp-close-btn")?.addEventListener("click", () => this.close());
+    this.el.querySelector("#wp-diglot-revert")?.addEventListener("click", () => {
+      if (this.activeElement) {
+        this.callbacks.onRevertDiglot?.(this.activeElement);
+      }
+      this.close();
+    });
   }
 };
 function esc(s) {

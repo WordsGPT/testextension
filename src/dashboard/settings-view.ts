@@ -65,7 +65,7 @@ export type SettingsSectionId =
 
 const SECTION_META: { id: SettingsSectionId; group: string; label: string; keywords: string }[] = [
   { id: 'profile', group: 'General', label: 'Profile', keywords: 'profile name learner device' },
-  { id: 'reading', group: 'Reading & words', label: 'Reading', keywords: 'hover click links keyboard shortcuts keymap never run domains goals pdf font' },
+  { id: 'reading', group: 'Reading & words', label: 'Reading', keywords: 'hover click links keyboard shortcuts keymap never run domains goals pdf font inline word replacement diglot weave toucan fluent code switching passive immersion' },
   { id: 'appearance', group: 'Reading & words', label: 'Appearance', keywords: 'theme dark light colours highlight underline strength word panel size' },
   { id: 'languages', group: 'Reading & words', label: 'Languages', keywords: '24 languages counting lemma surface readings furigana pinyin jyutping pitch accent yomitan dictionary delete' },
   { id: 'voice', group: 'Reading & words', label: 'Voice', keywords: 'tts speech aloud kokoro cloud voice speed volume' },
@@ -105,6 +105,7 @@ const READING_SHORTCUT_LABELS: [keyof ReadingKeymap, string][] = [
   ['sentenceMode', 'Sentence by sentence'],
   ['nextFreqSentence', 'Next sentence w/ frequent word'],
   ['prevFreqSentence', 'Prev sentence w/ frequent word'],
+  ['toggleDiglot', 'Toggle Inline Word Replacement'],
 ];
 
 const VIDEO_SHORTCUT_LABELS: [keyof VideoKeymap, string][] = [
@@ -244,6 +245,38 @@ function renderSectionHtml(secId: SettingsSectionId, ctx: SettingsViewContext): 
               <div class="setting-desc">Automatically highlight unfamiliar words on articles, forums &amp; chatbots.</div>
             </div>
             <input type="checkbox" data-bool="runOnWebPages" ${s.runOnWebPages ? 'checked' : ''} />
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Inline word replacement on native-language pages (Diglot Weave)</div>
+              <div class="setting-desc">Passively weave target-language vocabulary into English/L1 web pages you browse daily (Trusty &amp; Truong, CHI 2011).</div>
+            </div>
+            <input type="checkbox" data-bool="inlineReplacementEnabled" ${s.inlineReplacementEnabled ? 'checked' : ''} />
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Inline replacement density (${s.inlineReplacementDensityPct}%)</div>
+              <div class="setting-desc">Percentage of words per paragraph replaced with target-language equivalents.</div>
+            </div>
+            <input type="range" min="5" max="40" step="5" data-num="inlineReplacementDensityPct" value="${s.inlineReplacementDensityPct}" />
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Vocabulary pool to weave</div>
+              <div class="setting-desc">Prioritizes words you are actively learning (1–4) plus high-frequency new words (i+1).</div>
+            </div>
+            <select class="select" data-str="inlineReplacementPool">
+              <option value="learning_and_new" ${s.inlineReplacementPool === 'learning_and_new' ? 'selected' : ''}>Learning (1–4) + New words (i+1)</option>
+              <option value="learning_only" ${s.inlineReplacementPool === 'learning_only' ? 'selected' : ''}>Learning words only (1–4)</option>
+              <option value="all_vocab" ${s.inlineReplacementPool === 'all_vocab' ? 'selected' : ''}>All vocabulary (including Known)</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Show original word hint next to woven words</div>
+              <div class="setting-desc">Displays a subtle inline hint of the original L1 word alongside the target-language replacement.</div>
+            </div>
+            <input type="checkbox" data-bool="inlineReplacementShowHint" ${s.inlineReplacementShowHint ? 'checked' : ''} />
           </div>
           <div class="setting-row">
             <div>

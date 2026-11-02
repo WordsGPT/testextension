@@ -9,6 +9,7 @@ import type {
   WordRecord,
 } from './types';
 import { analyzeJapaneseParts, analyzeKoreanParts, normalizeWord } from './segmenter';
+import { buildEnglishGlossIndex } from './diglot';
 import { getExtensionUrl } from './webext';
 
 export interface LoadedLangIndex {
@@ -17,6 +18,7 @@ export interface LoadedLangIndex {
   byHeadword: Map<string, DictEntry[]>;
   byForm: Map<string, DictEntry[]>;
   byAltScript: Map<string, DictEntry[]>;
+  byEnglishGloss: Map<string, DictEntry[]>;
   byRank: DictEntry[];
   lexiconSet: Set<string>;
   chars: Record<string, CharInfo>;
@@ -67,6 +69,7 @@ export function buildLangIndex(dict: BundledDictionary): LoadedLangIndex {
   }
 
   const byRank = [...dict.entries].sort((a, b) => (a.rank ?? 999999) - (b.rank ?? 999999));
+  const byEnglishGloss = buildEnglishGlossIndex(dict.entries);
 
   const loaded: LoadedLangIndex = {
     lang: dict.lang,
@@ -74,6 +77,7 @@ export function buildLangIndex(dict: BundledDictionary): LoadedLangIndex {
     byHeadword,
     byForm,
     byAltScript,
+    byEnglishGloss,
     byRank,
     lexiconSet,
     chars: dict.chars || {},

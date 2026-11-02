@@ -35,6 +35,7 @@ export const DEFAULT_READING_KEYMAP: ReadingKeymap = {
   prevFreqSentence: 'Shift+A',
   nextUnknownSentence: 'Shift+E',
   prevUnknownSentence: 'Shift+Q',
+  toggleDiglot: 'Shift+W',
 };
 
 export const DEFAULT_VIDEO_KEYMAP: VideoKeymap = {
@@ -116,6 +117,11 @@ export function createDefaultSettings(): VerbaSettings {
     },
 
     runOnWebPages: true,
+    inlineReplacementEnabled: true,
+    inlineReplacementDensityPct: 15,
+    inlineReplacementPool: 'learning_and_new',
+    inlineReplacementMaxRank: 3000,
+    inlineReplacementShowHint: true,
     pausedTabIds: [],
     forceEnabledUrls: [],
     neverRunDomains: ['mail.google.com', 'docs.google.com', 'outlook.live.com'],

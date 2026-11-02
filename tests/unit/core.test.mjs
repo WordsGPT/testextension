@@ -13,6 +13,7 @@ before(async () => {
     export * from './src/shared/constants.ts';
     export * from './src/shared/segmenter.ts';
     export * from './src/shared/dictionary.ts';
+    export * from './src/shared/diglot.ts';
     export * from './src/shared/sync-crypto.ts';
     export * from './src/shared/imports.ts';
     export * from './src/shared/placement.ts';
@@ -285,5 +286,72 @@ describe('Verba Vocabulary & Subtitle Importers', () => {
     const cues = core.parseSubtitleFile(srt, 'srt');
     assert.ok(cues.length >= 4);
     assert.ok(cues[0].end > cues[0].start);
+  });
+});
+
+describe('Verba Inline Word Replacement (Diglot Weave Engine)', () => {
+  it('indexes English glosses across all 24 languages and weaves L2 words into L1 sentences with spacing & pool rules', () => {
+    const itRaw = JSON.parse(fs.readFileSync(path.resolve('dictionaries/it.json'), 'utf8'));
+    const itIdx = core.buildLangIndex(itRaw);
+
+    assert.ok(itIdx.byEnglishGloss.get('book')?.some((e) => e.w === 'libro'));
+    assert.ok(itIdx.byEnglishGloss.get('water')?.some((e) => e.w === 'acqua'));
+    assert.ok(itIdx.byEnglishGloss.get('forest')?.some((e) => e.w === 'foresta'));
+
+    // Plural and capitalization matching
+    const pluralMatch = core.matchEnglishTokenToTarget('Books', itIdx);
+    assert.ok(pluralMatch);
+    assert.equal(pluralMatch.isPlural, true);
+    assert.equal(pluralMatch.isCapitalized, true);
+    const formatted = core.formatDiglotTargetSurface(pluralMatch.candidates[0], 'it', true, true);
+    assert.equal(formatted, 'Libri');
+
+    // Weaving into an English sentence
+    const settings = core.createDefaultSettings();
+    settings.inlineReplacementDensityPct = 25;
+    const wordMap = new Map([
+      [
+        'foresta',
+        {
+          id: 'it:foresta',
+          lang: 'it',
+          word: 'foresta',
+          status: 2, // Learning stage 2 -> prioritized
+          isPhrase: false,
+          isCustomSegment: false,
+          lookupCount: 1,
+          source: 'manual',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      [
+        'casa',
+        {
+          id: 'it:casa',
+          lang: 'it',
+          word: 'casa',
+          status: -1, // Ignored -> must never be woven
+          isPhrase: false,
+          isCustomSegment: false,
+          lookupCount: 1,
+          source: 'manual',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    ]);
+
+    const sentence = 'Every morning I read a book in the house near the quiet forest and the school.';
+    const tokens = core.weaveDiglotSegment(sentence, 'it', itIdx, wordMap, settings, new Map());
+    const replaced = tokens.filter((t) => t.isReplaced);
+    assert.ok(replaced.length >= 2, `Expected >=2 woven words, got ${replaced.length}`);
+    // Ignored 'casa' (house) must not be replaced
+    assert.ok(!replaced.some((t) => t.targetWord === 'casa'), 'Ignored word casa should not be replaced');
+    // Learning 'foresta' should be replaced with status 2
+    const forestTok = replaced.find((t) => t.targetWord === 'foresta');
+    assert.ok(forestTok, 'Expected learning word foresta to be woven');
+    assert.equal(forestTok.originalText, 'forest');
+    assert.equal(forestTok.status, 2);
   });
 });

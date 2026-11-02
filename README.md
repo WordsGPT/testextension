@@ -47,8 +47,9 @@ Instead, load it via **`about:debugging`**:
    - Mixes **Word → Meaning** and **Meaning → Word** questions with 4 choices + an `"I'm not sure yet"` option (`Space` / `0`).
    - Reports diagnosed CEFR level (`A0`–`C2`), estimated passive vocabulary size, per-band accuracy breakdown, and **1-Click Vocabulary Calibration** (with 1-click Undo).
 
-3. **Web Highlighting, Reader View & Sentence Mode**
-   - Highlights words using `<verba-w>` custom elements with customizable styles.
+3. **Web Highlighting, Inline Word Replacement ("Diglot Weave"), Reader View & Sentence Mode**
+   - Highlights target-language words using `<verba-w>` custom elements with customizable styles.
+   - **Inline Word Replacement / Diglot Weave (`Shift+W`)**: Grounded in *Trusty & Truong (ACM CHI 2011)* and *VocabEncounter (ACM CHI 2022)*, passively weaves target-language content words (prioritizing active Learning `1–4` and $i+1$ vocabulary) directly into English/native-language web pages you browse daily, with hover/click Word Panel lookup, optional inline L1 hints, and 1-click single-word or full-page revert.
    - **Reader View (`Shift+L`)**: Distraction-free reading with Dark, Sepia, and White paper themes, typography controls, and automatic saving to your Bookshelf.
    - **Sentence-by-Sentence (`Shift+S`)**: Step through articles or books one sentence at a time with instant translation and TTS audio.
    - **Read Aloud (`Shift+R`)**: Synchronized sentence-by-sentence speech synthesis.
@@ -71,6 +72,7 @@ Instead, load it via **`about:debugging`**:
 | Sentence-by-Sentence Mode | `Shift+S` |
 | Read Aloud (TTS) | `Shift+R` |
 | Toggle Page Highlights | `Shift+H` |
+| Toggle Inline Word Replacement (Diglot Weave) | `Shift+W` |
 | Mark All Page Blue Words Known | `Shift+K` |
 | Video: Previous / Replay / Next Subtitle Line | `A` / `S` / `D` |
 | Video: Peek Blurred Subtitle / Translation | `E` |

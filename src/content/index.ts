@@ -73,8 +73,9 @@ export class VerbaPageRuntime {
       words: init.words,
       customDicts: init.customDicts,
       rootContainer: document.body,
+      diglotMode: Boolean(init.diglotModeOnThisPage),
       onCountsChanged: (counts) => {
-        this.island?.update({ counts });
+        this.island?.update({ counts, diglotActive: this.highlighter.diglotMode });
       },
     });
 
@@ -85,9 +86,11 @@ export class VerbaPageRuntime {
         await sendBgMessage({ type: 'SAVE_SETTINGS', patch: { activeLang: nextLang } });
         location.reload();
       },
+      onToggleDiglot: () => this.toggleDiglotOnPage(),
     });
     this.island.update({
       totalKnownCount: init.totalKnownCount,
+      diglotActive: Boolean(init.diglotModeOnThisPage),
       todayStats: init.todayStats,
     });
     if (init.autoSwitchedFrom) {
@@ -104,6 +107,9 @@ export class VerbaPageRuntime {
       },
       onExtendSelection: (dir) => this.extendOpenWordSelection(dir),
       onOpenAskAiChat: (sent) => this.readerSuite.openAskAiModal(sent),
+      onRevertDiglot: (el) => {
+        this.highlighter.revertDiglotElement(el);
+      },
       onClose: () => {
         if (this.readerSuite.isReadingAloud && this.readerSuite.isReadingPaused) {
           this.readerSuite.toggleReadAloud();
@@ -853,6 +859,21 @@ export class VerbaPageRuntime {
         this.readerSuite.jumpSentenceByUnknown(false, -1);
         return;
       }
+      if (matchCombo(combo, rk.toggleDiglot)) {
+        e.preventDefault();
+        this.toggleDiglotOnPage();
+        return;
+      }
+    });
+  }
+
+  public toggleDiglotOnPage(forceState?: boolean): void {
+    if (!this.highlighter) return;
+    this.wordPanel?.close();
+    const active = this.highlighter.toggleDiglotMode(forceState);
+    this.island?.update({
+      diglotActive: active,
+      counts: this.highlighter.getCounts(),
     });
   }
 
@@ -884,6 +905,8 @@ export class VerbaPageRuntime {
         this.readerSuite?.toggleReaderView();
       } else if (msg.type === 'VERBA_TRIGGER_READ_ALOUD') {
         this.readerSuite?.toggleReadAloud();
+      } else if (msg.type === 'VERBA_TRIGGER_DIGLOT') {
+        this.toggleDiglotOnPage();
       } else if (msg.type === 'VERBA_WORD_UPDATED' || msg.type === 'VERBA_WORDS_REFRESH') {
         this.reloadWordsFromBackground(false);
         if (msg.totalKnownCount !== undefined || msg.todayStats) {

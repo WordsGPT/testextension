@@ -473,6 +473,16 @@ async function initPopup() {
           </label>
         </div>
 
+        <div class="switch-row">
+          <div>
+            <span class="switch-label">Inline word replacement (${settings.inlineReplacementDensityPct}%)</span>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="sw-diglot" ${settings.inlineReplacementEnabled ? "checked" : ""} />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
         ${tabId !== void 0 && isWebTab ? `
           <div class="switch-row">
             <div>
@@ -507,6 +517,10 @@ async function initPopup() {
           <button type="button" class="btn" id="btn-aloud">
             <span>Read aloud</span>
             <kbd>${esc(settings.readingKeymap.readAloud)}</kbd>
+          </button>
+          <button type="button" class="btn btn-full" id="btn-diglot-here">
+            <span>\u21C4 Toggle Inline Word Replacement</span>
+            <kbd>${esc(settings.readingKeymap.toggleDiglot || "Shift+W")}</kbd>
           </button>
           <button type="button" class="btn btn-full ${isForceEnabled ? "btn-accent" : ""}" id="btn-force-here">
             <span>${isForceEnabled ? "\u2713 Forced on for this page" : "Turn Verba on here (override detection)"}</span>
@@ -568,6 +582,18 @@ async function initPopup() {
       }
       await render();
     });
+    root.querySelector("#sw-diglot")?.addEventListener("change", async (e) => {
+      const checked = e.target.checked;
+      settings = await sendBgMessage({
+        type: "SAVE_SETTINGS",
+        patch: { inlineReplacementEnabled: checked }
+      });
+      if (tabId !== void 0 && isWebTab) {
+        reloadTab(tabId).catch(() => {
+        });
+      }
+      await render();
+    });
     root.querySelector("#sw-pause-tab")?.addEventListener("change", async (e) => {
       if (tabId === void 0) return;
       const checked = e.target.checked;
@@ -618,6 +644,13 @@ async function initPopup() {
     root.querySelector("#btn-aloud")?.addEventListener("click", () => {
       if (tabId !== void 0) {
         sendTabMessage(tabId, { type: "VERBA_TRIGGER_READ_ALOUD" }).catch(() => {
+        });
+        window.close();
+      }
+    });
+    root.querySelector("#btn-diglot-here")?.addEventListener("click", () => {
+      if (tabId !== void 0) {
+        sendTabMessage(tabId, { type: "VERBA_TRIGGER_DIGLOT" }).catch(() => {
         });
         window.close();
       }

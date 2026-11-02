@@ -97,6 +97,23 @@ verba-w ruby.verba-ruby > rt {
   font-weight: 400;
   user-select: none;
 }
+verba-w[data-diglot="1"] {
+  border-bottom: 1.5px dashed rgb(16 185 129 / 0.8);
+  padding: 0 2px;
+}
+${
+  settings.inlineReplacementShowHint
+    ? `
+verba-w[data-diglot="1"][data-orig]::after {
+  content: " · " attr(data-orig);
+  font-size: 0.74em;
+  opacity: 0.68;
+  font-weight: 400;
+  user-select: none;
+}
+`
+    : ''
+}
 [data-verba-reading-sentence="1"] {
   text-decoration: underline;
   text-decoration-color: #38bdf8;
@@ -198,6 +215,11 @@ button {
   transition: background 0.12s;
 }
 .island-btn:hover { background: var(--fill-press); }
+.island-btn.active {
+  background: rgb(16 185 129 / .22);
+  color: #6ee7b7;
+  box-shadow: inset 0 0 0 1px rgb(16 185 129 / .45);
+}
 .island-dot {
   width: 8px;
   height: 8px;
@@ -206,6 +228,7 @@ button {
 }
 .island-dot.new { background: #3b82f6; }
 .island-dot.learn { background: #f7a800; }
+.island-dot.diglot { background: #10b981; }
 .island-stat {
   display: inline-flex;
   align-items: center;
@@ -353,6 +376,19 @@ button {
   margin-top: 4px;
   font-size: 0.9em;
   color: var(--ink-2);
+}
+.wp-diglot-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: rgb(16 185 129 / .14);
+  border: 1px solid rgb(16 185 129 / .35);
+  color: #a7f3d0;
+  font-size: 12px;
 }
 .wp-pitch {
   font-family: var(--mono);

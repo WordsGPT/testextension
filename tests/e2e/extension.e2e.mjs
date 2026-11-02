@@ -23,6 +23,22 @@ function findChromiumExecutable() {
 
 function startFixtureServer() {
   const server = http.createServer((req, res) => {
+    if (req.url?.startsWith('/english')) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`<!doctype html>
+        <html lang="en">
+          <head><title>Morning Reading Notes</title></head>
+          <body>
+            <article>
+              <h1>Reading in the Garden</h1>
+              <p id="en-p1">Every morning a good friend walks to the quiet garden near the old school and the forest to read a story about nature and freedom.</p>
+              <p id="en-p2">Music and science bring harmony to the city, while <a id="en-link" href="#en-anchor">this friend</a> studies history.</p>
+            </article>
+          </body>
+        </html>`);
+      return;
+    }
+
     if (req.url?.startsWith('/chinese')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(`<!doctype html>
@@ -170,6 +186,48 @@ async function runE2E() {
       const panel = root?.querySelector('.verba-panel');
       return panel?.textContent?.includes('图') && panel?.textContent?.includes('馆');
     });
+
+    // 4b. Test Inline Word Replacement (Diglot Weave) on an English (L1) Web Page
+    await webPage.goto(`${baseUrl}/english`, { waitUntil: 'domcontentloaded' });
+    await webPage.waitForSelector('verba-w[data-diglot="1"]', { timeout: 10000 });
+    const diglotCount = await webPage.locator('verba-w[data-diglot="1"]').count();
+    assert.ok(diglotCount >= 2, `Expected >=2 inline-replaced diglot words on English page, got ${diglotCount}`);
+
+    // Verify Counter Island shows woven count and active Diglot button
+    const islandHasDiglot = await webPage.evaluate(() => {
+      const root = document.getElementById('verba-ui-root')?.shadowRoot;
+      const btn = root?.querySelector('#island-diglot-btn');
+      const countEl = root?.querySelector('#island-diglot-count');
+      return Boolean(btn?.classList.contains('active') && Number(countEl?.textContent || '0') >= 2);
+    });
+    assert.equal(islandHasDiglot, true, 'Counter Island should display active Diglot toggle and woven word count');
+
+    // Click first inline-replaced word -> verify Diglot Weave banner in Word Panel & Revert button
+    const firstDiglot = webPage.locator('verba-w[data-diglot="1"]').first();
+    const origWord = await firstDiglot.getAttribute('data-orig');
+    assert.ok(origWord && origWord.length >= 3, 'Diglot element should record original L1 word in data-orig');
+    await firstDiglot.click();
+    await webPage.waitForFunction((expectedOrig) => {
+      const root = document.getElementById('verba-ui-root')?.shadowRoot;
+      const banner = root?.querySelector('#wp-diglot-banner');
+      return Boolean(banner && banner.textContent?.includes(expectedOrig));
+    }, origWord);
+
+    // Click Revert button inside Word Panel -> restores that word back to original L1 text
+    await webPage.evaluate(() => {
+      const root = document.getElementById('verba-ui-root')?.shadowRoot;
+      root?.querySelector('#wp-diglot-revert')?.click();
+    });
+    const afterRevertCount = await webPage.locator('verba-w[data-diglot="1"]').count();
+    assert.equal(afterRevertCount, diglotCount - 1, 'Clicking Revert in Word Panel should restore that single word');
+
+    // Press Shift+W to toggle Diglot Weave off across the page, then Shift+W to weave again
+    await webPage.keyboard.press('Shift+W');
+    await webPage.waitForFunction(() => document.querySelectorAll('verba-w[data-diglot="1"]').length === 0);
+    await webPage.keyboard.press('Shift+W');
+    await webPage.waitForSelector('verba-w[data-diglot="1"]');
+    console.log('✓ [4b/8] Inline Word Replacement (Diglot Weave), Word Panel Diglot banner/revert & Shift+W toggle verified');
+
     await webPage.close();
     console.log('✓ [4/8] Auto-language switch (zh), compound segmentation & Characters tab (B) verified');
 

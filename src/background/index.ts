@@ -367,6 +367,7 @@ onRuntimeMessage(async (rawMsg: BgRequest, sender) => {
       const isForceOn = settings.forceEnabledUrls.includes(rawMsg.url);
       const isBlocked = !isForceOn && isDomainBlocked(rawMsg.url, settings.neverRunDomains);
       let enabled = settings.runOnWebPages && !isPaused && !isBlocked;
+      let diglotModeOnThisPage = false;
 
       if (enabled && !isForceOn && (rawMsg.htmlLang || rawMsg.sampleText)) {
         const pageLang = detectTextLanguage(rawMsg.sampleText || '', rawMsg.htmlLang);
@@ -375,6 +376,8 @@ onRuntimeMessage(async (rawMsg: BgRequest, sender) => {
             autoSwitchedFrom = activeLang;
             activeLang = pageLang;
             await saveSettings({ activeLang });
+          } else if (settings.inlineReplacementEnabled && activeLang !== 'en') {
+            diglotModeOnThisPage = true;
           } else if (!rawMsg.url.includes('youtube.com') && !rawMsg.url.includes('netflix.com')) {
             enabled = false;
           }
@@ -392,6 +395,7 @@ onRuntimeMessage(async (rawMsg: BgRequest, sender) => {
         activeLang,
         autoSwitchedFrom,
         enabledOnThisPage: enabled,
+        diglotModeOnThisPage,
         words,
         customDicts,
         todayStats,

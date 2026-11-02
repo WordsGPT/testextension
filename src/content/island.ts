@@ -15,8 +15,15 @@ export class VerbaIsland {
   private switchNoteEl: HTMLElement;
   private tallyOpen = false;
 
-  public counts: PageWordCounts = { newWords: 0, learningWords: 0, knownWordsOnPage: 0, allBlueKeys: [] };
+  public counts: PageWordCounts = {
+    newWords: 0,
+    learningWords: 0,
+    knownWordsOnPage: 0,
+    diglotWords: 0,
+    allBlueKeys: [],
+  };
   public totalKnownCount = 0;
+  public diglotActive = false;
   public todayStats: IslandTodayStats = { wordsMarkedKnown: 0, frequentMarkedKnown: 0, wordsRead: 0, secondsListened: 0 };
 
   constructor(
@@ -26,6 +33,7 @@ export class VerbaIsland {
       onKnowAll: () => void;
       onOpenReader: () => void;
       onSwitchLanguage: (lang: LangCode) => void;
+      onToggleDiglot?: () => void;
     }
   ) {
     this.el = document.createElement('div');
@@ -67,11 +75,13 @@ export class VerbaIsland {
     settings?: VerbaSettings;
     counts?: PageWordCounts;
     totalKnownCount?: number;
+    diglotActive?: boolean;
     todayStats?: IslandTodayStats;
   }): void {
     if (params.settings) this.settings = params.settings;
     if (params.counts) this.counts = params.counts;
     if (params.totalKnownCount !== undefined) this.totalKnownCount = params.totalKnownCount;
+    if (params.diglotActive !== undefined) this.diglotActive = params.diglotActive;
     if (params.todayStats) this.todayStats = params.todayStats;
     this.render();
   }
@@ -94,12 +104,23 @@ export class VerbaIsland {
         </select>`
       : '';
 
+    const diglotStatHtml =
+      this.diglotActive || this.counts.diglotWords > 0
+        ? `<span class="island-stat" title="Target-language words woven into this page"><i class="island-dot diglot"></i><b id="island-diglot-count">${this.counts.diglotWords}</b> woven</span>`
+        : '';
+
     this.el.innerHTML = `
       <button type="button" class="island-btn" id="island-tally-toggle" title="Today's tally">${
         this.tallyOpen ? '▾' : '▴'
       }</button>
       ${langBadgeHtml}
       <button type="button" class="island-btn" id="island-reader-btn" title="Reader View (Shift+L)">📖</button>
+      <button type="button" class="island-btn ${
+        this.diglotActive ? 'active' : ''
+      }" id="island-diglot-btn" title="Toggle Inline Word Replacement / Diglot Weave (${
+        this.settings.readingKeymap.toggleDiglot || 'Shift+W'
+      })">⇄</button>
+      ${diglotStatHtml}
       <span class="island-stat" title="New words on this page"><i class="island-dot new"></i><b id="island-new-count">${
         this.counts.newWords
       }</b> new</span>
@@ -119,6 +140,10 @@ export class VerbaIsland {
 
     this.el.querySelector('#island-reader-btn')?.addEventListener('click', () => {
       this.callbacks.onOpenReader();
+    });
+
+    this.el.querySelector('#island-diglot-btn')?.addEventListener('click', () => {
+      this.callbacks.onToggleDiglot?.();
     });
 
     this.el.querySelector('#island-know-all')?.addEventListener('click', () => {

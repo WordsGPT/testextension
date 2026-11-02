@@ -836,7 +836,8 @@ var DEFAULT_READING_KEYMAP = {
   nextFreqSentence: "Shift+D",
   prevFreqSentence: "Shift+A",
   nextUnknownSentence: "Shift+E",
-  prevUnknownSentence: "Shift+Q"
+  prevUnknownSentence: "Shift+Q",
+  toggleDiglot: "Shift+W"
 };
 var DEFAULT_VIDEO_KEYMAP = {
   toggleCaptions: "c",
@@ -896,6 +897,11 @@ function createDefaultSettings() {
       fr: getDefaultLangOptions("fr")
     },
     runOnWebPages: true,
+    inlineReplacementEnabled: true,
+    inlineReplacementDensityPct: 15,
+    inlineReplacementPool: "learning_and_new",
+    inlineReplacementMaxRank: 3e3,
+    inlineReplacementShowHint: true,
     pausedTabIds: [],
     forceEnabledUrls: [],
     neverRunDomains: ["mail.google.com", "docs.google.com", "outlook.live.com"],
@@ -1651,6 +1657,148 @@ function applyGermanSeparableVerbs(tokens, lang) {
   }
 }
 
+// src/shared/diglot.ts
+var FUNCTION_POS = /* @__PURE__ */ new Set(["art.", "prep.", "conj.", "part.", "pron.", "prop."]);
+var AMBIGUOUS_ENGLISH_GLOSSES = /* @__PURE__ */ new Set([
+  "the",
+  "a",
+  "an",
+  "to",
+  "of",
+  "in",
+  "into",
+  "on",
+  "upon",
+  "at",
+  "by",
+  "for",
+  "with",
+  "from",
+  "about",
+  "and",
+  "or",
+  "but",
+  "not",
+  "no",
+  "yes",
+  "that",
+  "this",
+  "these",
+  "those",
+  "which",
+  "who",
+  "what",
+  "be",
+  "is",
+  "am",
+  "are",
+  "was",
+  "were",
+  "been",
+  "being",
+  "have",
+  "has",
+  "had",
+  "do",
+  "does",
+  "did",
+  "make",
+  "go",
+  "come",
+  "get",
+  "take",
+  "put",
+  "give",
+  "say",
+  "tell",
+  "see",
+  "know",
+  "can",
+  "will",
+  "would",
+  "should",
+  "may",
+  "might",
+  "all",
+  "whole",
+  "other",
+  "another",
+  "else",
+  "same",
+  "self",
+  "very",
+  "much",
+  "lot",
+  "more",
+  "most",
+  "some",
+  "any",
+  "one",
+  "two",
+  "still",
+  "yet",
+  "again",
+  "well",
+  "then",
+  "way",
+  "manner",
+  "part",
+  "case",
+  "point",
+  "state",
+  "fact",
+  "thing"
+]);
+function posPriority(pos) {
+  if (!pos) return 3;
+  if (pos.startsWith("n")) return 1;
+  if (pos.startsWith("adj")) return 2;
+  if (pos.startsWith("adv")) return 3;
+  if (pos.startsWith("v")) return 4;
+  return 5;
+}
+function buildEnglishGlossIndex(entries) {
+  const byGloss = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    if (!entry.w || !entry.m || entry.m.length === 0) continue;
+    if (entry.special === "name" || entry.special === "place") continue;
+    if (entry.pos && FUNCTION_POS.has(entry.pos)) continue;
+    if (/vocabulary item #\d+/i.test(entry.m[0] || "")) continue;
+    for (const rawM of entry.m) {
+      const stripped = rawM.replace(/\([^)]*\)/g, " ");
+      const parts = stripped.split(/[;,/]/);
+      for (const part of parts) {
+        let cleaned = part.trim().toLowerCase();
+        if (cleaned.startsWith("to ") && entry.pos?.startsWith("v")) {
+          cleaned = cleaned.slice(3).trim();
+        } else if (cleaned.startsWith("the ")) {
+          cleaned = cleaned.slice(4).trim();
+        } else if (cleaned.startsWith("a ") || cleaned.startsWith("an ")) {
+          cleaned = cleaned.replace(/^an?\s+/, "").trim();
+        }
+        if (!/^[a-z]{3,24}$/.test(cleaned)) continue;
+        if (AMBIGUOUS_ENGLISH_GLOSSES.has(cleaned)) continue;
+        if (entry.pos?.startsWith("v") && cleaned.length < 4) continue;
+        const list = byGloss.get(cleaned);
+        if (list) {
+          if (!list.includes(entry)) list.push(entry);
+        } else {
+          byGloss.set(cleaned, [entry]);
+        }
+      }
+    }
+  }
+  for (const [gloss, list] of byGloss.entries()) {
+    list.sort((a, b) => {
+      const posDiff = posPriority(a.pos) - posPriority(b.pos);
+      if (posDiff !== 0) return posDiff;
+      return (a.rank ?? 999999) - (b.rank ?? 999999);
+    });
+    byGloss.set(gloss, list);
+  }
+  return byGloss;
+}
+
 // src/shared/dictionary.ts
 var indexCache = /* @__PURE__ */ new Map();
 function buildLangIndex(dict) {
@@ -1691,12 +1839,14 @@ function buildLangIndex(dict) {
     }
   }
   const byRank = [...dict.entries].sort((a, b) => (a.rank ?? 999999) - (b.rank ?? 999999));
+  const byEnglishGloss = buildEnglishGlossIndex(dict.entries);
   const loaded = {
     lang: dict.lang,
     entries: dict.entries,
     byHeadword,
     byForm,
     byAltScript,
+    byEnglishGloss,
     byRank,
     lexiconSet,
     chars: dict.chars || {}
@@ -2586,6 +2736,7 @@ onRuntimeMessage(async (rawMsg, sender) => {
       const isForceOn = settings.forceEnabledUrls.includes(rawMsg.url);
       const isBlocked = !isForceOn && isDomainBlocked(rawMsg.url, settings.neverRunDomains);
       let enabled = settings.runOnWebPages && !isPaused && !isBlocked;
+      let diglotModeOnThisPage = false;
       if (enabled && !isForceOn && (rawMsg.htmlLang || rawMsg.sampleText)) {
         const pageLang = detectTextLanguage(rawMsg.sampleText || "", rawMsg.htmlLang);
         if (pageLang && pageLang !== activeLang) {
@@ -2593,6 +2744,8 @@ onRuntimeMessage(async (rawMsg, sender) => {
             autoSwitchedFrom = activeLang;
             activeLang = pageLang;
             await saveSettings({ activeLang });
+          } else if (settings.inlineReplacementEnabled && activeLang !== "en") {
+            diglotModeOnThisPage = true;
           } else if (!rawMsg.url.includes("youtube.com") && !rawMsg.url.includes("netflix.com")) {
             enabled = false;
           }
@@ -2608,6 +2761,7 @@ onRuntimeMessage(async (rawMsg, sender) => {
         activeLang,
         autoSwitchedFrom,
         enabledOnThisPage: enabled,
+        diglotModeOnThisPage,
         words,
         customDicts,
         todayStats,

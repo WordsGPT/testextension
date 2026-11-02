@@ -8,6 +8,7 @@ import type {
 } from '../shared/types';
 import type { LoadedLangIndex } from '../shared/dictionary';
 import { resolveTrackingKey } from '../shared/dictionary';
+import { weaveDiglotSegment } from '../shared/diglot';
 import { formatWordReading, segmentText } from '../shared/segmenter';
 import { textLooksLikeLanguage } from '../shared/languages';
 import { buildPageHighlightStyles } from './styles';
@@ -42,6 +43,7 @@ export interface PageWordCounts {
   newWords: number;
   learningWords: number;
   knownWordsOnPage: number;
+  diglotWords: number;
   allBlueKeys: string[];
 }
 
@@ -61,6 +63,7 @@ export class VerbaHighlighter {
   public dictIndex: LoadedLangIndex;
   public wordMap = new Map<string, WordRecord>();
   public customDicts: CustomDictionaryMeta[] = [];
+  public diglotMode = false;
   public onCountsChanged?: (counts: PageWordCounts) => void;
 
   private rootContainer: ParentNode;
@@ -75,6 +78,7 @@ export class VerbaHighlighter {
     customDicts?: CustomDictionaryMeta[];
     rootContainer?: ParentNode;
     isBookOrReader?: boolean;
+    diglotMode?: boolean;
     onCountsChanged?: (counts: PageWordCounts) => void;
   }) {
     this.lang = params.lang;
@@ -84,6 +88,7 @@ export class VerbaHighlighter {
     this.customDicts = params.customDicts || [];
     this.rootContainer = params.rootContainer || document.body;
     this.isBookOrReader = Boolean(params.isBookOrReader);
+    this.diglotMode = Boolean(params.diglotMode);
     this.onCountsChanged = params.onCountsChanged;
     this.setWords(params.words);
   }
@@ -198,6 +203,11 @@ export class VerbaHighlighter {
   }
 
   public scanAndHighlight(root: ParentNode = this.rootContainer): void {
+    if (this.diglotMode && !this.isBookOrReader) {
+      this.scanAndWeaveDiglot(root);
+      return;
+    }
+
     const { lexicon, phrases, overrides } = this.getPhrasesAndCustomLexicon();
     const textNodes: Text[] = [];
 
@@ -279,12 +289,131 @@ export class VerbaHighlighter {
   }
 
   /**
+   * Inline Word Replacement ("Diglot Weave" / Passive Immersion):
+   * Scans L1 text nodes and weaves target-language (L2) vocabulary in place while preserving L1 context.
+   */
+  public scanAndWeaveDiglot(root: ParentNode = this.rootContainer): void {
+    if (!this.settings.inlineReplacementEnabled && !this.diglotMode) return;
+
+    const pageWovenCounts = new Map<string, number>();
+    for (const existing of Array.from(this.rootContainer.querySelectorAll<HTMLElement>('verba-w[data-diglot="1"]'))) {
+      const k = existing.dataset.key || existing.dataset.w || '';
+      if (k) pageWovenCounts.set(k, (pageWovenCounts.get(k) || 0) + 1);
+    }
+
+    const textNodes: Text[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => {
+        const parent = node.parentElement;
+        if (!parent) return NodeFilter.FILTER_REJECT;
+        if (SKIP_TAGS.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
+        if (
+          parent.closest(
+            'a, button, [role="link"], [role="button"], verba-w, #verba-ui-root, [data-verba-ignore="1"], [contenteditable="true"], code, pre, script, style, rt'
+          )
+        ) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        const val = node.nodeValue || '';
+        if (!/[A-Za-z]{3,}/.test(val)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+
+    let current: Node | null;
+    while ((current = walker.nextNode())) {
+      textNodes.push(current as Text);
+    }
+
+    for (const textNode of textNodes) {
+      const text = textNode.nodeValue || '';
+      const tokens = weaveDiglotSegment(
+        text,
+        this.lang,
+        this.dictIndex,
+        this.wordMap,
+        this.settings,
+        pageWovenCounts
+      );
+      if (!tokens.some((t) => t.isReplaced)) continue;
+
+      const frag = document.createDocumentFragment();
+      for (const tok of tokens) {
+        if (!tok.isReplaced || !tok.targetSurface || !tok.targetWord) {
+          frag.appendChild(document.createTextNode(tok.text));
+          continue;
+        }
+
+        const key = tok.targetWord;
+        const { statusAttr, readingHtml } = this.computeStatusAttr(key, tok.targetSurface, tok.targetLemma);
+
+        const el = document.createElement('verba-w');
+        el.dataset.diglot = '1';
+        el.dataset.orig = tok.originalText || tok.text;
+        el.dataset.w = tok.targetWord;
+        el.dataset.key = key;
+        el.dataset.s = statusAttr;
+        if (tok.targetLemma) el.dataset.lemma = tok.targetLemma;
+        if (tok.entry?.rank) el.dataset.rank = String(tok.entry.rank);
+
+        const insideNativeRuby = Boolean(textNode.parentElement?.closest('ruby'));
+        if (readingHtml && !insideNativeRuby) {
+          el.innerHTML = readingHtml;
+        } else {
+          el.textContent = tok.targetSurface;
+        }
+
+        frag.appendChild(el);
+      }
+
+      textNode.parentNode?.replaceChild(frag, textNode);
+    }
+
+    this.setupHonestReadingObserver(root);
+    this.emitCounts();
+  }
+
+  /**
+   * Reverts a single inline-replaced <verba-w data-diglot="1"> element back to its original L1 word.
+   */
+  public revertDiglotElement(el: HTMLElement): void {
+    const orig = el.dataset.orig || el.dataset.w || el.textContent || '';
+    const parent = el.parentNode;
+    el.replaceWith(document.createTextNode(orig));
+    parent?.normalize();
+    this.emitCounts();
+  }
+
+  /**
+   * Toggles Inline Word Replacement (Diglot Weave) mode on the current page.
+   */
+  public toggleDiglotMode(forceState?: boolean): boolean {
+    const nextState = forceState !== undefined ? forceState : !this.diglotMode;
+    const wrappers = Array.from(this.rootContainer.querySelectorAll<HTMLElement>('verba-w'));
+    const parents = new Set<Node>();
+    for (const w of wrappers) {
+      const raw = w.dataset.orig || w.dataset.w || w.textContent || '';
+      if (w.parentNode) parents.add(w.parentNode);
+      w.replaceWith(document.createTextNode(raw));
+    }
+    for (const p of parents) p.normalize();
+
+    this.diglotMode = nextState;
+    if (this.diglotMode) {
+      this.scanAndWeaveDiglot(this.rootContainer);
+    } else {
+      this.emitCounts();
+    }
+    return this.diglotMode;
+  }
+
+  /**
    * Re-renders a paragraph cleanly (e.g. when user merges characters into a custom word or splits one).
    */
   public rehighlightContainer(container: Element): void {
     const wrappers = Array.from(container.querySelectorAll<HTMLElement>('verba-w'));
     for (const w of wrappers) {
-      const raw = w.dataset.w || w.textContent || '';
+      const raw = w.dataset.orig || w.dataset.w || w.textContent || '';
       w.replaceWith(document.createTextNode(raw));
     }
     container.normalize();
@@ -312,6 +441,10 @@ export class VerbaHighlighter {
       const key = el.dataset.key || surface;
       const lemmaHint = el.dataset.lemma;
       const { statusAttr, readingHtml } = this.computeStatusAttr(key, surface, lemmaHint);
+      if (el.dataset.diglot === '1' && statusAttr === '-1') {
+        this.revertDiglotElement(el);
+        continue;
+      }
       el.dataset.s = statusAttr;
       const insideNativeRuby = Boolean(el.parentElement?.closest('ruby:not(.verba-ruby)'));
       if (readingHtml && !insideNativeRuby) {
@@ -327,9 +460,11 @@ export class VerbaHighlighter {
     const newSet = new Set<string>();
     const learnSet = new Set<string>();
     const knownSet = new Set<string>();
+    let diglotWords = 0;
 
     const elements = this.rootContainer.querySelectorAll<HTMLElement>('verba-w');
     for (const el of Array.from(elements)) {
+      if (el.dataset.diglot === '1') diglotWords++;
       const key = el.dataset.key || el.dataset.w || '';
       if (!key) continue;
       const s = el.dataset.s;
@@ -342,6 +477,7 @@ export class VerbaHighlighter {
       newWords: newSet.size,
       learningWords: learnSet.size,
       knownWordsOnPage: knownSet.size,
+      diglotWords,
       allBlueKeys: Array.from(newSet),
     };
   }

@@ -22,6 +22,7 @@ export interface WordPanelCallbacks {
   onSplitCustomWord: (word: string) => Promise<void>;
   onExtendSelection: (dir: 'left_add' | 'left_trim' | 'right_trim' | 'right_add') => void;
   onOpenAskAiChat: (sentence: string) => void;
+  onRevertDiglot?: (el: HTMLElement) => void;
   onClose?: () => void;
 }
 
@@ -672,6 +673,15 @@ export class VerbaWordPanel {
       ? `<div style="margin-top:6px;font-size:12px;color:#93c5fd;">${esc(this.statusToast)}</div>`
       : '';
 
+    const diglotOrig =
+      this.activeElement?.dataset.diglot === '1' ? this.activeElement.dataset.orig || '' : '';
+    const diglotBannerHtml = diglotOrig
+      ? `<div class="wp-diglot-banner" id="wp-diglot-banner">
+          <span>⇄ Woven in place of <b>"${esc(diglotOrig)}"</b></span>
+          <button type="button" class="wp-btn-ghost" id="wp-diglot-revert" style="height:22px;padding:0 8px;font-size:11px;">Revert</button>
+        </div>`
+      : '';
+
     this.el.innerHTML = `
       <div class="wp-top">
         <div class="wp-head">
@@ -686,6 +696,7 @@ export class VerbaWordPanel {
         ${pitchHtml}
         ${rankHtml}
       </div>
+      ${diglotBannerHtml}
       ${tabsHtml}
       ${
         this.activeTab === 'characters'
@@ -891,6 +902,12 @@ export class VerbaWordPanel {
     });
 
     this.el.querySelector('#wp-close-btn')?.addEventListener('click', () => this.close());
+    this.el.querySelector('#wp-diglot-revert')?.addEventListener('click', () => {
+      if (this.activeElement) {
+        this.callbacks.onRevertDiglot?.(this.activeElement);
+      }
+      this.close();
+    });
   }
 }
 

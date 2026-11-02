@@ -294,7 +294,8 @@ var DEFAULT_READING_KEYMAP = {
   nextFreqSentence: "Shift+D",
   prevFreqSentence: "Shift+A",
   nextUnknownSentence: "Shift+E",
-  prevUnknownSentence: "Shift+Q"
+  prevUnknownSentence: "Shift+Q",
+  toggleDiglot: "Shift+W"
 };
 var DEFAULT_VIDEO_KEYMAP = {
   toggleCaptions: "c",
@@ -369,6 +370,11 @@ function createDefaultSettings() {
       fr: getDefaultLangOptions("fr")
     },
     runOnWebPages: true,
+    inlineReplacementEnabled: true,
+    inlineReplacementDensityPct: 15,
+    inlineReplacementPool: "learning_and_new",
+    inlineReplacementMaxRank: 3e3,
+    inlineReplacementShowHint: true,
     pausedTabIds: [],
     forceEnabledUrls: [],
     neverRunDomains: ["mail.google.com", "docs.google.com", "outlook.live.com"],
@@ -786,6 +792,148 @@ function normalizeWord(word, lang) {
   return trimmed.toLowerCase();
 }
 
+// src/shared/diglot.ts
+var FUNCTION_POS = /* @__PURE__ */ new Set(["art.", "prep.", "conj.", "part.", "pron.", "prop."]);
+var AMBIGUOUS_ENGLISH_GLOSSES = /* @__PURE__ */ new Set([
+  "the",
+  "a",
+  "an",
+  "to",
+  "of",
+  "in",
+  "into",
+  "on",
+  "upon",
+  "at",
+  "by",
+  "for",
+  "with",
+  "from",
+  "about",
+  "and",
+  "or",
+  "but",
+  "not",
+  "no",
+  "yes",
+  "that",
+  "this",
+  "these",
+  "those",
+  "which",
+  "who",
+  "what",
+  "be",
+  "is",
+  "am",
+  "are",
+  "was",
+  "were",
+  "been",
+  "being",
+  "have",
+  "has",
+  "had",
+  "do",
+  "does",
+  "did",
+  "make",
+  "go",
+  "come",
+  "get",
+  "take",
+  "put",
+  "give",
+  "say",
+  "tell",
+  "see",
+  "know",
+  "can",
+  "will",
+  "would",
+  "should",
+  "may",
+  "might",
+  "all",
+  "whole",
+  "other",
+  "another",
+  "else",
+  "same",
+  "self",
+  "very",
+  "much",
+  "lot",
+  "more",
+  "most",
+  "some",
+  "any",
+  "one",
+  "two",
+  "still",
+  "yet",
+  "again",
+  "well",
+  "then",
+  "way",
+  "manner",
+  "part",
+  "case",
+  "point",
+  "state",
+  "fact",
+  "thing"
+]);
+function posPriority(pos) {
+  if (!pos) return 3;
+  if (pos.startsWith("n")) return 1;
+  if (pos.startsWith("adj")) return 2;
+  if (pos.startsWith("adv")) return 3;
+  if (pos.startsWith("v")) return 4;
+  return 5;
+}
+function buildEnglishGlossIndex(entries) {
+  const byGloss = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    if (!entry.w || !entry.m || entry.m.length === 0) continue;
+    if (entry.special === "name" || entry.special === "place") continue;
+    if (entry.pos && FUNCTION_POS.has(entry.pos)) continue;
+    if (/vocabulary item #\d+/i.test(entry.m[0] || "")) continue;
+    for (const rawM of entry.m) {
+      const stripped = rawM.replace(/\([^)]*\)/g, " ");
+      const parts = stripped.split(/[;,/]/);
+      for (const part of parts) {
+        let cleaned = part.trim().toLowerCase();
+        if (cleaned.startsWith("to ") && entry.pos?.startsWith("v")) {
+          cleaned = cleaned.slice(3).trim();
+        } else if (cleaned.startsWith("the ")) {
+          cleaned = cleaned.slice(4).trim();
+        } else if (cleaned.startsWith("a ") || cleaned.startsWith("an ")) {
+          cleaned = cleaned.replace(/^an?\s+/, "").trim();
+        }
+        if (!/^[a-z]{3,24}$/.test(cleaned)) continue;
+        if (AMBIGUOUS_ENGLISH_GLOSSES.has(cleaned)) continue;
+        if (entry.pos?.startsWith("v") && cleaned.length < 4) continue;
+        const list = byGloss.get(cleaned);
+        if (list) {
+          if (!list.includes(entry)) list.push(entry);
+        } else {
+          byGloss.set(cleaned, [entry]);
+        }
+      }
+    }
+  }
+  for (const [gloss, list] of byGloss.entries()) {
+    list.sort((a, b) => {
+      const posDiff = posPriority(a.pos) - posPriority(b.pos);
+      if (posDiff !== 0) return posDiff;
+      return (a.rank ?? 999999) - (b.rank ?? 999999);
+    });
+    byGloss.set(gloss, list);
+  }
+  return byGloss;
+}
+
 // src/shared/dictionary.ts
 var indexCache = /* @__PURE__ */ new Map();
 function buildLangIndex(dict) {
@@ -826,12 +974,14 @@ function buildLangIndex(dict) {
     }
   }
   const byRank = [...dict.entries].sort((a, b) => (a.rank ?? 999999) - (b.rank ?? 999999));
+  const byEnglishGloss = buildEnglishGlossIndex(dict.entries);
   const loaded = {
     lang: dict.lang,
     entries: dict.entries,
     byHeadword,
     byForm,
     byAltScript,
+    byEnglishGloss,
     byRank,
     lexiconSet,
     chars: dict.chars || {}
@@ -1828,6 +1978,11 @@ button {
   transition: background 0.12s;
 }
 .island-btn:hover { background: var(--fill-press); }
+.island-btn.active {
+  background: rgb(16 185 129 / .22);
+  color: #6ee7b7;
+  box-shadow: inset 0 0 0 1px rgb(16 185 129 / .45);
+}
 .island-dot {
   width: 8px;
   height: 8px;
@@ -1836,6 +1991,7 @@ button {
 }
 .island-dot.new { background: #3b82f6; }
 .island-dot.learn { background: #f7a800; }
+.island-dot.diglot { background: #10b981; }
 .island-stat {
   display: inline-flex;
   align-items: center;
@@ -1983,6 +2139,19 @@ button {
   margin-top: 4px;
   font-size: 0.9em;
   color: var(--ink-2);
+}
+.wp-diglot-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: rgb(16 185 129 / .14);
+  border: 1px solid rgb(16 185 129 / .35);
+  color: #a7f3d0;
+  font-size: 12px;
 }
 .wp-pitch {
   font-family: var(--mono);
@@ -2946,6 +3115,11 @@ var VerbaWordPanel = class {
             ${lk.record?.lookupCount ? `<span>\u{1F440} ${lk.record.lookupCount}</span>` : ""}
           </div>` : "";
     const toastHtml = this.statusToast ? `<div style="margin-top:6px;font-size:12px;color:#93c5fd;">${esc(this.statusToast)}</div>` : "";
+    const diglotOrig = this.activeElement?.dataset.diglot === "1" ? this.activeElement.dataset.orig || "" : "";
+    const diglotBannerHtml = diglotOrig ? `<div class="wp-diglot-banner" id="wp-diglot-banner">
+          <span>\u21C4 Woven in place of <b>"${esc(diglotOrig)}"</b></span>
+          <button type="button" class="wp-btn-ghost" id="wp-diglot-revert" style="height:22px;padding:0 8px;font-size:11px;">Revert</button>
+        </div>` : "";
     this.el.innerHTML = `
       <div class="wp-top">
         <div class="wp-head">
@@ -2960,6 +3134,7 @@ var VerbaWordPanel = class {
         ${pitchHtml}
         ${rankHtml}
       </div>
+      ${diglotBannerHtml}
       ${tabsHtml}
       ${this.activeTab === "characters" ? charactersBodyHtml : `
             <ul class="wp-meanings">${meaningItemsHtml.join("")}</ul>
@@ -3145,6 +3320,12 @@ var VerbaWordPanel = class {
       });
     });
     this.el.querySelector("#wp-close-btn")?.addEventListener("click", () => this.close());
+    this.el.querySelector("#wp-diglot-revert")?.addEventListener("click", () => {
+      if (this.activeElement) {
+        this.callbacks.onRevertDiglot?.(this.activeElement);
+      }
+      this.close();
+    });
   }
 };
 function esc(s) {
@@ -4135,7 +4316,7 @@ function mergeListeningLogs(local, incoming) {
 // src/dashboard/settings-view.ts
 var SECTION_META = [
   { id: "profile", group: "General", label: "Profile", keywords: "profile name learner device" },
-  { id: "reading", group: "Reading & words", label: "Reading", keywords: "hover click links keyboard shortcuts keymap never run domains goals pdf font" },
+  { id: "reading", group: "Reading & words", label: "Reading", keywords: "hover click links keyboard shortcuts keymap never run domains goals pdf font inline word replacement diglot weave toucan fluent code switching passive immersion" },
   { id: "appearance", group: "Reading & words", label: "Appearance", keywords: "theme dark light colours highlight underline strength word panel size" },
   { id: "languages", group: "Reading & words", label: "Languages", keywords: "24 languages counting lemma surface readings furigana pinyin jyutping pitch accent yomitan dictionary delete" },
   { id: "voice", group: "Reading & words", label: "Voice", keywords: "tts speech aloud kokoro cloud voice speed volume" },
@@ -4173,7 +4354,8 @@ var READING_SHORTCUT_LABELS = [
   ["openReaderView", "Reader View"],
   ["sentenceMode", "Sentence by sentence"],
   ["nextFreqSentence", "Next sentence w/ frequent word"],
-  ["prevFreqSentence", "Prev sentence w/ frequent word"]
+  ["prevFreqSentence", "Prev sentence w/ frequent word"],
+  ["toggleDiglot", "Toggle Inline Word Replacement"]
 ];
 var VIDEO_SHORTCUT_LABELS = [
   ["toggleCaptions", "Toggle Dual Captions"],
@@ -4279,6 +4461,38 @@ function renderSectionHtml(secId, ctx) {
               <div class="setting-desc">Automatically highlight unfamiliar words on articles, forums &amp; chatbots.</div>
             </div>
             <input type="checkbox" data-bool="runOnWebPages" ${s.runOnWebPages ? "checked" : ""} />
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Inline word replacement on native-language pages (Diglot Weave)</div>
+              <div class="setting-desc">Passively weave target-language vocabulary into English/L1 web pages you browse daily (Trusty &amp; Truong, CHI 2011).</div>
+            </div>
+            <input type="checkbox" data-bool="inlineReplacementEnabled" ${s.inlineReplacementEnabled ? "checked" : ""} />
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Inline replacement density (${s.inlineReplacementDensityPct}%)</div>
+              <div class="setting-desc">Percentage of words per paragraph replaced with target-language equivalents.</div>
+            </div>
+            <input type="range" min="5" max="40" step="5" data-num="inlineReplacementDensityPct" value="${s.inlineReplacementDensityPct}" />
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Vocabulary pool to weave</div>
+              <div class="setting-desc">Prioritizes words you are actively learning (1\u20134) plus high-frequency new words (i+1).</div>
+            </div>
+            <select class="select" data-str="inlineReplacementPool">
+              <option value="learning_and_new" ${s.inlineReplacementPool === "learning_and_new" ? "selected" : ""}>Learning (1\u20134) + New words (i+1)</option>
+              <option value="learning_only" ${s.inlineReplacementPool === "learning_only" ? "selected" : ""}>Learning words only (1\u20134)</option>
+              <option value="all_vocab" ${s.inlineReplacementPool === "all_vocab" ? "selected" : ""}>All vocabulary (including Known)</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Show original word hint next to woven words</div>
+              <div class="setting-desc">Displays a subtle inline hint of the original L1 word alongside the target-language replacement.</div>
+            </div>
+            <input type="checkbox" data-bool="inlineReplacementShowHint" ${s.inlineReplacementShowHint ? "checked" : ""} />
           </div>
           <div class="setting-row">
             <div>

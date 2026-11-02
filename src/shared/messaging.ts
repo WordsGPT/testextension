@@ -68,6 +68,7 @@ export interface InitPagePayload {
   activeLang: LangCode;
   autoSwitchedFrom?: LangCode;
   enabledOnThisPage: boolean;
+  diglotModeOnThisPage?: boolean;
   words: WordRecord[];
   customDicts: CustomDictionaryMeta[];
   todayStats: {

@@ -260,7 +260,10 @@ export interface ReadingKeymap {
   prevFreqSentence: string;
   nextUnknownSentence: string;
   prevUnknownSentence: string;
+  toggleDiglot: string;
 }
+
+export type DiglotVocabPool = 'learning_and_new' | 'learning_only' | 'all_vocab';
 
 export interface VideoKeymap {
   toggleCaptions: string;
@@ -321,6 +324,11 @@ export interface VerbaSettings {
 
   // 3. Reading
   runOnWebPages: boolean;
+  inlineReplacementEnabled: boolean;
+  inlineReplacementDensityPct: number;
+  inlineReplacementPool: DiglotVocabPool;
+  inlineReplacementMaxRank: number;
+  inlineReplacementShowHint: boolean;
   pausedTabIds: number[];
   forceEnabledUrls: string[];
   neverRunDomains: string[];

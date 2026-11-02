@@ -117,6 +117,16 @@ async function initPopup(): Promise<void> {
           </label>
         </div>
 
+        <div class="switch-row">
+          <div>
+            <span class="switch-label">Inline word replacement (${settings.inlineReplacementDensityPct}%)</span>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="sw-diglot" ${settings.inlineReplacementEnabled ? 'checked' : ''} />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
         ${
           tabId !== undefined && isWebTab
             ? `
@@ -161,6 +171,10 @@ async function initPopup(): Promise<void> {
           <button type="button" class="btn" id="btn-aloud">
             <span>Read aloud</span>
             <kbd>${esc(settings.readingKeymap.readAloud)}</kbd>
+          </button>
+          <button type="button" class="btn btn-full" id="btn-diglot-here">
+            <span>⇄ Toggle Inline Word Replacement</span>
+            <kbd>${esc(settings.readingKeymap.toggleDiglot || 'Shift+W')}</kbd>
           </button>
           <button type="button" class="btn btn-full ${isForceEnabled ? 'btn-accent' : ''}" id="btn-force-here">
             <span>${isForceEnabled ? '✓ Forced on for this page' : 'Turn Verba on here (override detection)'}</span>
@@ -227,6 +241,18 @@ async function initPopup(): Promise<void> {
       await render();
     });
 
+    root.querySelector('#sw-diglot')?.addEventListener('change', async (e) => {
+      const checked = (e.target as HTMLInputElement).checked;
+      settings = await sendBgMessage<VerbaSettings>({
+        type: 'SAVE_SETTINGS',
+        patch: { inlineReplacementEnabled: checked },
+      });
+      if (tabId !== undefined && isWebTab) {
+        reloadTab(tabId).catch(() => {});
+      }
+      await render();
+    });
+
     root.querySelector('#sw-pause-tab')?.addEventListener('change', async (e) => {
       if (tabId === undefined) return;
       const checked = (e.target as HTMLInputElement).checked;
@@ -283,6 +309,13 @@ async function initPopup(): Promise<void> {
     root.querySelector('#btn-aloud')?.addEventListener('click', () => {
       if (tabId !== undefined) {
         sendTabMessage(tabId, { type: 'VERBA_TRIGGER_READ_ALOUD' }).catch(() => {});
+        window.close();
+      }
+    });
+
+    root.querySelector('#btn-diglot-here')?.addEventListener('click', () => {
+      if (tabId !== undefined) {
+        sendTabMessage(tabId, { type: 'VERBA_TRIGGER_DIGLOT' }).catch(() => {});
         window.close();
       }
     });
