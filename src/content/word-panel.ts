@@ -9,6 +9,7 @@ import type {
 import { formatOrdinal } from '../shared/dictionary';
 import { sendBgMessage } from '../shared/messaging';
 import { speakText } from '../shared/tts';
+import { setHtmlContent } from '../shared/dom';
 
 export interface WordPanelCallbacks {
   onGrade: (word: string, status: WordStatus, extra?: {
@@ -682,7 +683,9 @@ export class VerbaWordPanel {
         </div>`
       : '';
 
-    this.el.innerHTML = `
+    setHtmlContent(
+      this.el,
+      `
       <div class="wp-top">
         <div class="wp-head">
           <span class="wp-word" ${genderAttr}>${esc(headword)}</span>
@@ -716,7 +719,8 @@ export class VerbaWordPanel {
       ${ankiPickerHtml}
       ${toastHtml}
       ${gradesHtml}
-    `;
+    `
+    );
 
     this.bindEvents();
   }

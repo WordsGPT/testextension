@@ -8,7 +8,7 @@
     "build:icons": "node scripts/build-icons.mjs",
     "build:dicts": "node scripts/build-dictionaries.mjs",
     "build:js": "node scripts/build.mjs",
-    "build": "npm run build:icons && npm run build:dicts && npm run build:js",
+    "build": "npm run build:icons && npm run build:dicts && npm run build:js && npm run package:firefox",
     "package:firefox": "node scripts/package-firefox.mjs",
     "lint:firefox": "npx addons-linter dist/verba-firefox.zip",
     "typecheck": "tsc --noEmit",

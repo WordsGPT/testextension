@@ -3,6 +3,7 @@ import { getDailyStatsByLang, getLogicalDateString, getWordsByLang } from '../sh
 import { LANG_MAP } from '../shared/languages';
 import { sendBgMessage } from '../shared/messaging';
 import { createTab, getExtensionUrl, queryTabs, reloadTab, sendTabMessage } from '../shared/webext';
+import { setHtmlContent } from '../shared/dom';
 
 async function initPopup(): Promise<void> {
   const root = document.getElementById('popup-app');
@@ -57,7 +58,9 @@ async function initPopup(): Promise<void> {
       })
       .join('');
 
-    root.innerHTML = `
+    setHtmlContent(
+      root,
+      `
       <header class="pop-header">
         <a href="#" id="pop-brand" class="brand" title="Open Verba Dashboard">
           <span class="brand-dot"></span>
@@ -202,7 +205,8 @@ async function initPopup(): Promise<void> {
           <span>⚙ Settings</span>
         </button>
       </nav>
-    `;
+    `
+    );
 
     root.querySelector('#pop-brand')?.addEventListener('click', (e) => {
       e.preventDefault();

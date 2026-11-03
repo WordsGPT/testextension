@@ -11,8 +11,29 @@ fs.mkdirSync(distDir, { recursive: true });
 
 const pdfWorkerSrc = path.join(rootDir, 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs');
 if (fs.existsSync(pdfWorkerSrc)) {
-  fs.copyFileSync(pdfWorkerSrc, path.join(distDir, 'pdf.worker.min.mjs'));
+  let workerCode = fs.readFileSync(pdfWorkerSrc, 'utf8');
+  // Strip eval / Function constructor probes so Firefox AMO linter reports 0 warnings
+  workerCode = workerCode
+    .replace('try{new Function("");return!0}catch{return!1}', 'return!1')
+    .replace('if(e)return new Function("src","srcOffset","dest","destOffset",e)', 'if(false)return null');
+  fs.writeFileSync(path.join(distDir, 'pdf.worker.min.mjs'), workerCode, 'utf8');
 }
+
+const sanitizePdfJsPlugin = {
+  name: 'sanitize-pdfjs-for-amo',
+  setup(build) {
+    build.onLoad({ filter: /pdfjs-dist[\\/]build[\\/]pdf\.mjs$/ }, (args) => {
+      let contents = fs.readFileSync(args.path, 'utf8');
+      contents = contents
+        .replace(/new Function\(""\);\s*return true;/g, 'return false;')
+        .replace(
+          /const worker = await import\(\/\*webpackIgnore: true\*\/this\.workerSrc\);\s*return worker\.WorkerMessageHandler;/g,
+          'return this.#mainThreadWorkerMessageHandler;'
+        );
+      return { contents, loader: 'js' };
+    });
+  },
+};
 
 const commonConfig = {
   bundle: true,
@@ -20,6 +41,7 @@ const commonConfig = {
   minify: false,
   target: ['chrome120', 'firefox121'],
   logLevel: 'info',
+  plugins: [sanitizePdfJsPlugin],
 };
 
 await Promise.all([

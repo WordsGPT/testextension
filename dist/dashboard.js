@@ -1884,6 +1884,29 @@ function playAudioUrl(url, speed, volume, onEnd) {
   });
 }
 
+// src/shared/dom.ts
+var sharedParser = null;
+function setHtmlContent(el, html) {
+  if (!html) {
+    el.replaceChildren();
+    return;
+  }
+  if (!sharedParser) {
+    sharedParser = new DOMParser();
+  }
+  const doc = sharedParser.parseFromString(`<!doctype html><html><body>${html}</body></html>`, "text/html");
+  doc.body.querySelectorAll("script, iframe, object, embed").forEach((n) => n.remove());
+  doc.body.querySelectorAll("*").forEach((elem) => {
+    for (const attr of Array.from(elem.attributes)) {
+      if (attr.name.toLowerCase().startsWith("on")) {
+        elem.removeAttribute(attr.name);
+      }
+    }
+  });
+  const nodes = Array.from(doc.body.childNodes).map((n) => document.importNode(n, true));
+  el.replaceChildren(...nodes);
+}
+
 // src/content/styles.ts
 var SHADOW_UI_CSS = `
 :host {
@@ -3120,7 +3143,9 @@ var VerbaWordPanel = class {
           <span>\u21C4 Woven in place of <b>"${esc(diglotOrig)}"</b></span>
           <button type="button" class="wp-btn-ghost" id="wp-diglot-revert" style="height:22px;padding:0 8px;font-size:11px;">Revert</button>
         </div>` : "";
-    this.el.innerHTML = `
+    setHtmlContent(
+      this.el,
+      `
       <div class="wp-top">
         <div class="wp-head">
           <span class="wp-word" ${genderAttr}>${esc(headword)}</span>
@@ -3150,7 +3175,8 @@ var VerbaWordPanel = class {
       ${ankiPickerHtml}
       ${toastHtml}
       ${gradesHtml}
-    `;
+    `
+    );
     this.bindEvents();
   }
   bindEvents() {
@@ -3665,7 +3691,9 @@ var PlacementViewController = class {
       const learningCount = ctx.words.filter(
         (w) => !w.deleted && w.status >= 1 && w.status <= 4
       ).length;
-      container.innerHTML = `
+      setHtmlContent(
+        container,
+        `
         <div class="pl-wrap">
           <div class="card pl-hero-card">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
@@ -3683,8 +3711,8 @@ var PlacementViewController = class {
               <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                 <select id="pl-lang-select" class="select" aria-label="Placement test language">
                   ${LANGUAGES.map(
-        (l) => `<option value="${l.code}" ${l.code === lang ? "selected" : ""}>${esc2(l.name)} (${esc2(l.nativeName)})</option>`
-      ).join("")}
+          (l) => `<option value="${l.code}" ${l.code === lang ? "selected" : ""}>${esc2(l.name)} (${esc2(l.nativeName)})</option>`
+        ).join("")}
                 </select>
                 <button type="button" class="btn btn-primary" id="pl-start-btn" style="padding:9px 18px;font-size:13.5px;">
                   ${displayAssessment ? "\u21BB Retake Placement Test" : "\u25B6 Start Placement Test"}
@@ -3694,14 +3722,14 @@ var PlacementViewController = class {
 
             <div class="pl-band-strip">
               ${CEFR_BANDS.map((band) => {
-        const info = CEFR_META[band];
-        return `
+          const info = CEFR_META[band];
+          return `
                   <div class="pl-band-pill">
                     <span class="pl-band-code">${band}</span>
                     <span class="pl-band-desc">${esc2(info.title)}</span>
                     <span class="pl-band-range">~${info.approxVocab.toLocaleString()} words</span>
                   </div>`;
-      }).join("")}
+        }).join("")}
             </div>
           </div>
 
@@ -3736,9 +3764,9 @@ var PlacementViewController = class {
                 </thead>
                 <tbody>
                   ${history2.map((h) => {
-        const totalAns = Object.values(h.bandScores).reduce((s, b) => s + b.total, 0);
-        const totalCor = Object.values(h.bandScores).reduce((s, b) => s + b.correct, 0);
-        return `
+          const totalAns = Object.values(h.bandScores).reduce((s, b) => s + b.total, 0);
+          const totalCor = Object.values(h.bandScores).reduce((s, b) => s + b.correct, 0);
+          return `
                       <tr>
                         <td>${new Date(h.completedAt).toLocaleString()}</td>
                         <td><span class="pl-cefr-chip" data-level="${h.cefrLevel}">${h.cefrLevel} \xB7 ${esc2(h.cefrTitle)}</span></td>
@@ -3748,12 +3776,13 @@ var PlacementViewController = class {
                         <td>${h.confidencePct}%</td>
                         <td>${h.appliedCalibration ? "\u2713 Applied" : "\u2014"}</td>
                       </tr>`;
-      }).join("")}
+        }).join("")}
                 </tbody>
               </table>
             </div>` : ""}
         </div>
-      `;
+      `
+      );
       container.querySelector("#pl-lang-select")?.addEventListener("change", async (e) => {
         const nextLang = e.target.value;
         this.session = null;
@@ -4006,7 +4035,9 @@ var PlacementViewController = class {
     const bandInfo = CEFR_META[q.band];
     const langMeta = LANG_MAP[ctx.settings.activeLang];
     const langName = langMeta?.name || ctx.settings.activeLang;
-    container.innerHTML = `
+    setHtmlContent(
+      container,
+      `
       <div class="pl-wrap">
         <div class="card pl-quiz-card" id="pl-quiz-card">
           <div class="pl-quiz-top">
@@ -4041,7 +4072,7 @@ var PlacementViewController = class {
 
           <div class="pl-options-grid" role="group" aria-label="Answer choices">
             ${q.options.map(
-      (opt, idx) => `
+        (opt, idx) => `
               <button type="button" class="pl-option-btn" id="pl-opt-${idx}" data-idx="${idx}" data-opt-id="${esc2(opt.id)}">
                 <span class="pl-opt-key">${idx + 1}</span>
                 <span class="pl-opt-label">
@@ -4049,7 +4080,7 @@ var PlacementViewController = class {
                   ${opt.sublabel ? `<small style="color:var(--ink-3);margin-left:6px">[${esc2(opt.sublabel)}]</small>` : ""}
                 </span>
               </button>`
-    ).join("")}
+      ).join("")}
           </div>
 
           <div class="pl-quiz-foot">
@@ -4062,7 +4093,8 @@ var PlacementViewController = class {
           </div>
         </div>
       </div>
-    `;
+    `
+    );
     const handleChoice = async (optionId) => {
       const targetWord = q.targetEntry.w;
       const targetMeaning = q.targetEntry.m[0] || "";
@@ -4398,7 +4430,9 @@ function renderSettingsTab(container, ctx) {
     ).join("")}
       `;
   }).join("");
-  container.innerHTML = `
+  setHtmlContent(
+    container,
+    `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap">
       <div>
         <h1 class="page-heading">Settings</h1>
@@ -4422,7 +4456,8 @@ function renderSettingsTab(container, ctx) {
         ${matchingSections.length === 0 ? `<div class="card"><p style="margin:0;color:var(--ink-3)">No settings match "${esc3(ctx.searchQuery)}".</p></div>` : matchingSections.map((secId) => renderSectionHtml(secId, ctx)).join("")}
       </div>
     </div>
-  `;
+  `
+  );
   bindSettingsEvents(container, ctx);
 }
 function renderSectionHtml(secId, ctx) {
@@ -5705,7 +5740,9 @@ var VerbaDashboardApp = class {
       ["milestones", "Milestones"],
       ["settings", "Settings"]
     ];
-    this.rootEl.innerHTML = `
+    setHtmlContent(
+      this.rootEl,
+      `
       <header class="dash-topbar">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <a href="#home" class="brand">
@@ -5714,12 +5751,12 @@ var VerbaDashboardApp = class {
           </a>
           <nav class="main-tabs" aria-label="Dashboard sections">
             ${tabs.map(
-      ([id, label]) => `
+        ([id, label]) => `
               <button type="button" class="main-tab ${this.activeTab === id ? "active" : ""}" data-main-tab="${id}">
                 ${esc4(label)}
               </button>
             `
-    ).join("")}
+      ).join("")}
           </nav>
         </div>
 
@@ -5735,7 +5772,8 @@ var VerbaDashboardApp = class {
 
       <main class="dash-container" id="dash-main-pane"></main>
       ${this.toastMsg ? `<div class="toast-banner">${esc4(this.toastMsg)}</div>` : ""}
-    `;
+    `
+    );
     const pane = document.getElementById("dash-main-pane");
     switch (this.activeTab) {
       case "home":
@@ -5853,7 +5891,9 @@ var VerbaDashboardApp = class {
     const listenPct = Math.min(100, Math.round(listenMin / Math.max(1, this.settings.dailyListeningGoalMin) * 100));
     const streak = this.computeStreak(dailyMap);
     const showOnboarding = !this.settings.onboarded || this.forceOnboarding;
-    pane.innerHTML = `
+    setHtmlContent(
+      pane,
+      `
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
         <div>
           <h1 class="page-heading" style="margin-bottom:4px;">Immersion reading &amp; vocabulary, tailored to your frontier.</h1>
@@ -5910,7 +5950,7 @@ var VerbaDashboardApp = class {
           </div>
           ${this.books.length === 0 ? `<p style="color:var(--ink-3)">No ${esc4(langName)} books on your shelf yet.</p>` : `<div style="display:flex;flex-direction:column;gap:10px">
                 ${this.books.slice(0, 4).map(
-      (b) => `
+        (b) => `
                   <a href="books.html?book=${encodeURIComponent(b.id)}" style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface-2);border-radius:9px;text-decoration:none;color:var(--ink)">
                     <div>
                       <div style="font-weight:600">${esc4(b.title)}</div>
@@ -5919,7 +5959,7 @@ var VerbaDashboardApp = class {
                     <span class="btn btn-sm btn-primary">Read</span>
                   </a>
                 `
-    ).join("")}
+      ).join("")}
               </div>`}
         </section>
 
@@ -5937,7 +5977,8 @@ var VerbaDashboardApp = class {
           </div>
         </section>
       </div>
-    `;
+    `
+    );
     this.bindOnboardingEvents(pane);
     pane.querySelector("#btn-reopen-onboarding")?.addEventListener("click", () => {
       this.forceOnboarding = true;
@@ -6241,7 +6282,9 @@ var VerbaDashboardApp = class {
   }
   renderWords(pane) {
     const langName = LANG_MAP[this.settings.activeLang]?.name || this.settings.activeLang;
-    pane.innerHTML = `
+    setHtmlContent(
+      pane,
+      `
       <h1 class="page-heading">${esc4(langName)} Words</h1>
       <p class="page-sub">Search your graded words, sweep common words Known, explore frequency bands, or import from LingQ / Language Reactor / HanziHero / Anki.</p>
 
@@ -6261,7 +6304,8 @@ var VerbaDashboardApp = class {
       </div>
 
       <div id="words-subpane"></div>
-    `;
+    `
+    );
     pane.querySelectorAll("[data-wsub]").forEach((b) => {
       b.addEventListener("click", () => {
         this.wordsSubTab = b.dataset.wsub;
@@ -6299,7 +6343,9 @@ var VerbaDashboardApp = class {
       }
       return b.updatedAt - a.updatedAt;
     });
-    sub.innerHTML = `
+    setHtmlContent(
+      sub,
+      `
       <div class="card">
         <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:14px">
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -6341,9 +6387,9 @@ var VerbaDashboardApp = class {
             </thead>
             <tbody>
               ${filtered.slice(0, 250).map((w) => {
-      const dictEntry = this.dictIndex.byHeadword.get(w.word)?.[0];
-      const meaning = w.customMeaning || w.aiMeaning || dictEntry?.m.slice(0, 2).join("; ") || "\u2014";
-      return `
+        const dictEntry = this.dictIndex.byHeadword.get(w.word)?.[0];
+        const meaning = w.customMeaning || w.aiMeaning || dictEntry?.m.slice(0, 2).join("; ") || "\u2014";
+        return `
                   <tr>
                     <td>
                       <span class="w-chip" data-open-word="${esc4(w.word)}" data-s="${w.status}">${esc4(w.word)}</span>
@@ -6358,20 +6404,21 @@ var VerbaDashboardApp = class {
                     <td>
                       <div style="display:flex;gap:4px;flex-wrap:wrap">
                         ${[1, 2, 3, 4, 5, -1, 0].map((st) => {
-        const lbl = st === 5 ? "K" : st === -1 ? "X" : st === 0 ? "\u21BA" : String(st);
-        const active = w.status === st;
-        return `<button type="button" class="btn btn-sm ${active ? "btn-amber" : ""}" data-grade-w="${esc4(w.word)}" data-st="${st}">${lbl}</button>`;
-      }).join("")}
+          const lbl = st === 5 ? "K" : st === -1 ? "X" : st === 0 ? "\u21BA" : String(st);
+          const active = w.status === st;
+          return `<button type="button" class="btn btn-sm ${active ? "btn-amber" : ""}" data-grade-w="${esc4(w.word)}" data-st="${st}">${lbl}</button>`;
+        }).join("")}
                       </div>
                     </td>
                   </tr>
                 `;
-    }).join("")}
+      }).join("")}
             </tbody>
           </table>
         `}
       </div>
-    `;
+    `
+    );
     sub.querySelector("#mw-search")?.addEventListener("input", (e) => {
       this.myWordsSearch = e.target.value;
       this.renderMyWordsSub(sub);
@@ -6450,7 +6497,9 @@ var VerbaDashboardApp = class {
       const rec = this.wordMap.get(entry.w);
       return !rec || rec.status === 0;
     }).map((e) => e.w);
-    sub.innerHTML = `
+    setHtmlContent(
+      sub,
+      `
       <div class="card">
         <h2 class="card-title">Frequency Band Vocabulary Sweep</h2>
         <p style="margin:0 0 14px;color:var(--ink-2);font-size:13.5px">
@@ -6477,12 +6526,13 @@ var VerbaDashboardApp = class {
 
         <div class="wall-cloud" id="wall-cloud">
           ${slice.map((entry) => {
-      const st = this.wordMap.get(entry.w)?.status ?? 0;
-      return `<span class="w-chip" data-wall-word="${esc4(entry.w)}" data-s="${st}" title="#${entry.rank}: ${esc4(entry.m[0] || "")}">${esc4(entry.w)}</span>`;
-    }).join("")}
+        const st = this.wordMap.get(entry.w)?.status ?? 0;
+        return `<span class="w-chip" data-wall-word="${esc4(entry.w)}" data-s="${st}" title="#${entry.rank}: ${esc4(entry.m[0] || "")}">${esc4(entry.w)}</span>`;
+      }).join("")}
         </div>
       </div>
-    `;
+    `
+    );
     sub.querySelector("#wall-slider")?.addEventListener("input", (e) => {
       this.markKnownSliderN = Number(e.target.value);
       this.renderMarkKnownSub(sub);
@@ -6536,14 +6586,16 @@ var VerbaDashboardApp = class {
     for (let start = 1; start <= Math.max(1, total); start += 100) bands.push(start);
     const q = this.commonSearch.trim().toLowerCase();
     const visible = q ? allRanked.filter((e) => e.w.toLowerCase().includes(q) || String(e.rank) === q) : allRanked.slice(this.commonBandStart - 1, this.commonBandStart + 99);
-    sub.innerHTML = `
+    setHtmlContent(
+      sub,
+      `
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <select id="common-band-sel" class="select">
               ${bands.map(
-      (b) => `<option value="${b}" ${b === this.commonBandStart ? "selected" : ""}>Ranks ${b}\u2013${Math.min(total, b + 99)}</option>`
-    ).join("")}
+        (b) => `<option value="${b}" ${b === this.commonBandStart ? "selected" : ""}>Ranks ${b}\u2013${Math.min(total, b + 99)}</option>`
+      ).join("")}
             </select>
             <input type="search" id="common-search" class="input" placeholder="Find word or rank\u2026" value="${esc4(this.commonSearch)}" />
           </div>
@@ -6567,8 +6619,8 @@ var VerbaDashboardApp = class {
           </thead>
           <tbody>
             ${visible.slice(0, 120).map((e) => {
-      const st = this.wordMap.get(e.w)?.status ?? 0;
-      return `
+        const st = this.wordMap.get(e.w)?.status ?? 0;
+        return `
                 <tr>
                   <td style="font-family:var(--mono);color:var(--ink-3)">${e.rank ? formatOrdinal(e.rank) : "\u2014"}</td>
                   <td><span class="w-chip" data-common-w="${esc4(e.w)}" data-s="${st}">${esc4(e.w)}</span></td>
@@ -6576,11 +6628,12 @@ var VerbaDashboardApp = class {
                   <td>${esc4(e.m.join("; "))}</td>
                 </tr>
               `;
-    }).join("")}
+      }).join("")}
           </tbody>
         </table>
       </div>
-    `;
+    `
+    );
     sub.querySelector("#common-band-sel")?.addEventListener("change", (e) => {
       this.commonBandStart = Number(e.target.value);
       this.commonSearch = "";
@@ -6618,7 +6671,9 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
     });
   }
   renderWordsToolsSub(sub) {
-    sub.innerHTML = `
+    setHtmlContent(
+      sub,
+      `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
         <div class="card">
           <h3 class="card-title">Import from LingQ (CSV)</h3>
@@ -6667,15 +6722,16 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
         <div class="card" style="margin-top:18px;border-color:var(--amber)">
           <h3 class="card-title">Preview Import: ${esc4(this.pendingImportLabel)} (${this.pendingImportRecords.length.toLocaleString()} words)</h3>
           <p style="font-size:13px;color:var(--ink-2)">Sample: ${esc4(
-      this.pendingImportRecords.slice(0, 12).map((r) => `${r.word}${r.customMeaning ? ` (${r.customMeaning})` : ""}`).join(", ")
-    )}</p>
+        this.pendingImportRecords.slice(0, 12).map((r) => `${r.word}${r.customMeaning ? ` (${r.customMeaning})` : ""}`).join(", ")
+      )}</p>
           <div style="display:flex;gap:10px">
             <button type="button" class="btn btn-amber" id="btn-confirm-import">\u2713 Save ${this.pendingImportRecords.length.toLocaleString()} words</button>
             <button type="button" class="btn" id="btn-cancel-import">Cancel</button>
           </div>
         </div>
       ` : ""}
-    `;
+    `
+    );
     sub.querySelector("#imp-lingq")?.addEventListener("change", async (e) => {
       const f = e.target.files?.[0];
       if (!f) return;
@@ -6723,7 +6779,9 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
   }
   renderBooksOverview(pane) {
     const langName = LANG_MAP[this.settings.activeLang]?.name || this.settings.activeLang;
-    pane.innerHTML = `
+    setHtmlContent(
+      pane,
+      `
       <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:20px;flex-wrap:wrap">
         <div>
           <h1 class="page-heading">${esc4(langName)} Books Shelf</h1>
@@ -6734,7 +6792,7 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
 
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px">
         ${this.books.map(
-      (b) => `
+        (b) => `
           <a href="books.html?book=${encodeURIComponent(b.id)}" class="card" style="text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:8px">
             <div style="font-family:var(--mono);font-size:11px;color:var(--ink-3);text-transform:uppercase">${esc4(b.format)}</div>
             <div style="font-family:var(--serif);font-size:19px;font-weight:600;color:var(--ink)">${esc4(b.title)}</div>
@@ -6744,12 +6802,15 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
             </div>
           </a>
         `
-    ).join("")}
+      ).join("")}
       </div>
-    `;
+    `
+    );
   }
   renderVideosOverview(pane) {
-    pane.innerHTML = `
+    setHtmlContent(
+      pane,
+      `
       <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:20px;flex-wrap:wrap">
         <div>
           <h1 class="page-heading">Videos &amp; Dual Captions</h1>
@@ -6765,17 +6826,18 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
         <h2 class="card-title">Recent Videos (${this.videos.length})</h2>
         ${this.videos.length === 0 ? `<p style="color:var(--ink-3)">No watched videos recorded yet. Launch the Italian Demo above or open any YouTube video with subtitles!</p>` : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px">
               ${this.videos.map(
-      (v) => `
+        (v) => `
                 <div style="padding:12px;background:var(--surface-2);border-radius:9px">
                   <div style="font-weight:600;color:var(--ink)">${esc4(v.title)}</div>
                   <div style="font-size:12px;color:var(--ink-3);margin:4px 0 8px">${esc4(v.source)} \xB7 ${Math.floor(v.positionSec / 60)}:${String(v.positionSec % 60).padStart(2, "0")}</div>
                   <a href="video.html${v.id === "demo_it_caffe" ? "?demo=1" : ""}" class="btn btn-sm btn-primary">Resume</a>
                 </div>
               `
-    ).join("")}
+      ).join("")}
             </div>`}
       </div>
-    `;
+    `
+    );
   }
   renderProgress(pane) {
     const lang = this.settings.activeLang;
@@ -6819,7 +6881,9 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
     }
     const maxReadBar = Math.max(100, ...last14.map((x) => x.read));
     const maxListenBar = Math.max(10, ...last14.map((x) => x.listenMin));
-    pane.innerHTML = `
+    setHtmlContent(
+      pane,
+      `
       <h1 class="page-heading">${esc4(langName)} Progress</h1>
       <p class="page-sub">Honest reading &amp; listening tallies, calendar streaks, CEFR vocabulary estimate, and polyglot comparison.</p>
 
@@ -6873,13 +6937,13 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
           <h2 class="card-title">Words Read (Last 14 Days)</h2>
           <div class="bar-chart">
             ${last14.map(
-      (d) => `
+        (d) => `
               <div class="bar-col" title="${d.read} words">
                 <div class="bar-rect" style="height:${Math.round(d.read / maxReadBar * 100)}%;background:var(--blue)"></div>
                 <span class="bar-lbl">${d.label}</span>
               </div>
             `
-    ).join("")}
+      ).join("")}
           </div>
         </div>
 
@@ -6887,13 +6951,13 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
           <h2 class="card-title">Minutes Listened (Last 14 Days)</h2>
           <div class="bar-chart">
             ${last14.map(
-      (d) => `
+        (d) => `
               <div class="bar-col" title="${d.listenMin} min">
                 <div class="bar-rect" style="height:${Math.round(d.listenMin / maxListenBar * 100)}%;background:var(--amber)"></div>
                 <span class="bar-lbl">${d.label}</span>
               </div>
             `
-    ).join("")}
+      ).join("")}
           </div>
         </div>
       </div>
@@ -6917,7 +6981,7 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
               <thead><tr><th>Date</th><th>Track</th><th>Domain</th><th>Time</th><th>Status</th></tr></thead>
               <tbody>
                 ${this.listeningLogs.slice(0, 30).map(
-      (lg) => `
+        (lg) => `
                   <tr>
                     <td>${esc4(lg.date)}</td>
                     <td>${esc4(lg.title)}</td>
@@ -6929,11 +6993,12 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
                     </td>
                   </tr>
                 `
-    ).join("")}
+      ).join("")}
               </tbody>
             </table>`}
       </div>
-    `;
+    `
+    );
     this.populatePolyglotTable();
     pane.querySelector("#cal-prev")?.addEventListener("click", () => {
       this.calMonthOffset--;
@@ -6991,19 +7056,21 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
     const daysBack = this.polyglotRange === "today" ? 0 : this.polyglotRange === "7d" ? 7 : this.polyglotRange === "30d" ? 30 : 99999;
     const cutoffDate = getLogicalDateString(Date.now() - daysBack * 864e5, this.settings.dayEndsAtHour);
     const orderedLangs = this.settings.learningLangs;
-    mount.innerHTML = `
+    setHtmlContent(
+      mount,
+      `
       <table class="data-table">
         <thead>
           <tr><th>Language</th><th>Known Words</th><th>Words Read</th><th>Time Listened</th></tr>
         </thead>
         <tbody>
           ${orderedLangs.map((code) => {
-      const lWords = allWords.filter((w) => w.lang === code && !w.deleted);
-      const known = this.countUniqueKnownWords(lWords, code);
-      const lStats = allStats.filter((s) => s.lang === code && s.date >= cutoffDate);
-      const read = lStats.reduce((sum, s) => sum + s.wordsRead, 0);
-      const mins = Math.round(lStats.reduce((sum, s) => sum + s.secondsListened, 0) / 60);
-      return `
+        const lWords = allWords.filter((w) => w.lang === code && !w.deleted);
+        const known = this.countUniqueKnownWords(lWords, code);
+        const lStats = allStats.filter((s) => s.lang === code && s.date >= cutoffDate);
+        const read = lStats.reduce((sum, s) => sum + s.wordsRead, 0);
+        const mins = Math.round(lStats.reduce((sum, s) => sum + s.secondsListened, 0) / 60);
+        return `
               <tr>
                 <td><strong>${esc4(LANG_MAP[code]?.name || code)}</strong> <small style="color:var(--ink-3)">${esc4(LANG_MAP[code]?.nativeName || "")}</small></td>
                 <td>${known.toLocaleString()}</td>
@@ -7011,10 +7078,11 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
                 <td>${mins}m</td>
               </tr>
             `;
-    }).join("")}
+      }).join("")}
         </tbody>
       </table>
-    `;
+    `
+    );
   }
   renderMilestones(pane) {
     const lang = this.settings.activeLang;
@@ -7035,7 +7103,9 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
     const filteredNotes = this.studyNotes.filter(
       (n) => this.notesLangFilter === "all" || n.lang === this.notesLangFilter
     );
-    pane.innerHTML = `
+    setHtmlContent(
+      pane,
+      `
       <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:20px;flex-wrap:wrap">
         <div>
           <h1 class="page-heading">Milestones &amp; Study Log</h1>
@@ -7048,7 +7118,7 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
           <h2 class="card-title">Proficiency Milestones (${esc4(langName)})</h2>
           <div style="display:grid;gap:10px">
             ${milestones.map(
-      (m) => `
+        (m) => `
               <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--surface-2);border-radius:10px;border:1px solid ${m.done ? "rgb(34 197 94 / 0.45)" : "var(--border-subtle)"}">
                 <div>
                   <div style="font-weight:600;color:var(--ink)">${m.done ? "\u2713 " : "\u25CB "}${esc4(m.title)}</div>
@@ -7057,7 +7127,7 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
                 <span style="font-family:var(--mono);font-size:12px;color:${m.done ? "var(--green)" : "var(--amber)"}">${esc4(m.prog)}</span>
               </div>
             `
-    ).join("")}
+      ).join("")}
           </div>
         </section>
 
@@ -7072,7 +7142,7 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
 
           <div class="chat-feed" id="notes-feed">
             ${filteredNotes.length === 0 ? `<p style="color:var(--ink-3);font-size:12.5px;margin:0">No study notes yet. Record book reflections, grammar observations, or session goals below.</p>` : filteredNotes.map(
-      (n) => `
+        (n) => `
                   <div class="chat-msg">
                     <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-3);margin-bottom:3px">
                       <strong style="color:var(--ink)">[${esc4(n.lang.toUpperCase())}] ${esc4(n.title)}</strong>
@@ -7081,7 +7151,7 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
                     <div>${esc4(n.text)}</div>
                   </div>
                 `
-    ).join("")}
+      ).join("")}
           </div>
 
           <form id="note-form" style="display:flex;flex-direction:column;gap:6px">
@@ -7093,7 +7163,8 @@ ${rows.join("\n")}`], { type: "text/csv;charset=utf-8" });
           </form>
         </aside>
       </div>
-    `;
+    `
+    );
     pane.querySelector("#notes-lang-filter")?.addEventListener("change", (e) => {
       this.notesLangFilter = e.target.value;
       this.renderMilestones(pane);

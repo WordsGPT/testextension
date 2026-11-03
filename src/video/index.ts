@@ -21,6 +21,7 @@ import { LANG_MAP } from '../shared/languages';
 import { sendBgMessage } from '../shared/messaging';
 import { getExtApi, getExtensionUrl } from '../shared/webext';
 import { speakText } from '../shared/tts';
+import { setHtmlContent } from '../shared/dom';
 import { SHADOW_UI_CSS } from '../content/styles';
 import { VerbaHighlighter } from '../content/highlighter';
 import { VerbaWordPanel } from '../content/word-panel';
@@ -221,7 +222,9 @@ class VerbaLocalVideoApp {
       .map((c) => `<option value="${c}" ${c === lang ? 'selected' : ''}>${esc(LANG_MAP[c]?.name || c)}</option>`)
       .join('');
 
-    this.rootEl.innerHTML = `
+    setHtmlContent(
+      this.rootEl,
+      `
       <header class="topbar">
         <div class="topbar-left">
           <a href="dashboard.html" class="brand">
@@ -302,7 +305,8 @@ class VerbaLocalVideoApp {
           }
         </section>
       </main>
-    `;
+    `
+    );
 
     const videoEl = document.getElementById('verba-local-video') as HTMLVideoElement;
     this.captions.attachToVideo(videoEl);

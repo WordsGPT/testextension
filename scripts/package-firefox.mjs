@@ -32,6 +32,17 @@ function addDir(relDir, filterFn) {
 const rawManifest = JSON.parse(fs.readFileSync(path.join(rootDir, 'manifest.json'), 'utf8'));
 const ffManifest = {
   ...rawManifest,
+  browser_specific_settings: {
+    ...rawManifest.browser_specific_settings,
+    gecko: {
+      id: 'verba-reader@verba.org',
+      strict_min_version: '142.0',
+      ...rawManifest.browser_specific_settings?.gecko,
+      data_collection_permissions: rawManifest.browser_specific_settings?.gecko?.data_collection_permissions || {
+        required: ['none'],
+      },
+    },
+  },
   background: {
     scripts: ['dist/background.js'],
     type: 'module',

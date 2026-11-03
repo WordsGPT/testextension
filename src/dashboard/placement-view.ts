@@ -18,6 +18,7 @@ import {
 } from '../shared/db';
 import { sendBgMessage } from '../shared/messaging';
 import { speakText } from '../shared/tts';
+import { setHtmlContent } from '../shared/dom';
 
 export interface PlacementViewContext {
   settings: VerbaSettings;
@@ -69,7 +70,9 @@ export class PlacementViewController {
         (w) => !w.deleted && w.status >= 1 && w.status <= 4
       ).length;
 
-      container.innerHTML = `
+      setHtmlContent(
+        container,
+        `
         <div class="pl-wrap">
           <div class="card pl-hero-card">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
@@ -170,7 +173,8 @@ export class PlacementViewController {
               : ''
           }
         </div>
-      `;
+      `
+      );
 
       container.querySelector<HTMLSelectElement>('#pl-lang-select')?.addEventListener('change', async (e) => {
         const nextLang = (e.target as HTMLSelectElement).value as LangCode;
@@ -469,7 +473,9 @@ export class PlacementViewController {
     const langMeta = LANG_MAP[ctx.settings.activeLang];
     const langName = langMeta?.name || ctx.settings.activeLang;
 
-    container.innerHTML = `
+    setHtmlContent(
+      container,
+      `
       <div class="pl-wrap">
         <div class="card pl-quiz-card" id="pl-quiz-card">
           <div class="pl-quiz-top">
@@ -545,7 +551,8 @@ export class PlacementViewController {
           </div>
         </div>
       </div>
-    `;
+    `
+    );
 
     const handleChoice = async (optionId: string | 'unsure') => {
       const targetWord = q.targetEntry.w;

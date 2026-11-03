@@ -373,6 +373,29 @@ async function sendBgMessage(msg) {
   return sendRuntimeMessage(msg);
 }
 
+// src/shared/dom.ts
+var sharedParser = null;
+function setHtmlContent(el, html) {
+  if (!html) {
+    el.replaceChildren();
+    return;
+  }
+  if (!sharedParser) {
+    sharedParser = new DOMParser();
+  }
+  const doc = sharedParser.parseFromString(`<!doctype html><html><body>${html}</body></html>`, "text/html");
+  doc.body.querySelectorAll("script, iframe, object, embed").forEach((n) => n.remove());
+  doc.body.querySelectorAll("*").forEach((elem) => {
+    for (const attr of Array.from(elem.attributes)) {
+      if (attr.name.toLowerCase().startsWith("on")) {
+        elem.removeAttribute(attr.name);
+      }
+    }
+  });
+  const nodes = Array.from(doc.body.childNodes).map((n) => document.importNode(n, true));
+  el.replaceChildren(...nodes);
+}
+
 // src/popup/index.ts
 async function initPopup() {
   const root = document.getElementById("popup-app");
@@ -417,7 +440,9 @@ async function initPopup() {
       const meta = LANG_MAP[code];
       return `<option value="${code}" ${code === lang ? "selected" : ""}>${esc(meta?.name || code)} (${esc(meta?.nativeName || code)})</option>`;
     }).join("");
-    root.innerHTML = `
+    setHtmlContent(
+      root,
+      `
       <header class="pop-header">
         <a href="#" id="pop-brand" class="brand" title="Open Verba Dashboard">
           <span class="brand-dot"></span>
@@ -546,7 +571,8 @@ async function initPopup() {
           <span>\u2699 Settings</span>
         </button>
       </nav>
-    `;
+    `
+    );
     root.querySelector("#pop-brand")?.addEventListener("click", (e) => {
       e.preventDefault();
       openExtPage("dashboard.html");

@@ -2,6 +2,7 @@ import type { PerLanguageOptions, VerbaSettings } from '../shared/types';
 import { buildAskAiChatUrl } from '../shared/ai';
 import { sendBgMessage } from '../shared/messaging';
 import { speakText, stopSpeaking } from '../shared/tts';
+import { setHtmlContent } from '../shared/dom';
 import { VerbaHighlighter, buildPageHighlightStyles } from './highlighter-bridge';
 
 export class VerbaReaderSuite {
@@ -166,7 +167,9 @@ export class VerbaReaderSuite {
         ? `"${this.settings.customFontName}", var(--serif)`
         : 'var(--serif)';
 
-    this.readerEl.innerHTML = `
+    setHtmlContent(
+      this.readerEl,
+      `
       <div class="reader-bar">
         <span class="reader-bar-title">${esc(title)}</span>
         <button type="button" class="wp-btn-ghost" data-paper-pick="white">White</button>
@@ -189,7 +192,8 @@ export class VerbaReaderSuite {
           ${bodyHtml}
         </article>
       </div>
-    `;
+    `
+    );
 
     const articleBody = this.readerEl.querySelector<HTMLElement>('#rv-article-body');
     if (articleBody) {
@@ -305,7 +309,9 @@ export class VerbaReaderSuite {
       }
     }
 
-    this.sentenceModalEl.innerHTML = `
+    setHtmlContent(
+      this.sentenceModalEl,
+      `
       <div class="sentence-card" data-paper="${this.settings.readerTheme || 'dark'}">
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--ink-3);">
           <span>Sentence ${this.sentenceIdx + 1} / ${this.sentences.length}</span>
@@ -326,7 +332,8 @@ export class VerbaReaderSuite {
           <button type="button" class="wp-btn-ghost" id="sc-next">Next (D) ›</button>
         </div>
       </div>
-    `;
+    `
+    );
 
     const bodyEl = this.sentenceModalEl.querySelector<HTMLElement>('#sc-body');
     if (bodyEl) {
@@ -435,7 +442,9 @@ export class VerbaReaderSuite {
       return;
     }
     this.ttsBarEl.hidden = false;
-    this.ttsBarEl.innerHTML = `
+    setHtmlContent(
+      this.ttsBarEl,
+      `
       <button type="button" class="island-btn" id="tts-prev" title="Previous sentence">⏮</button>
       <button type="button" class="island-btn" id="tts-toggle">${this.isReadingPaused ? '▶ Resume' : '⏸ Pause'}</button>
       <button type="button" class="island-btn" id="tts-next" title="Next sentence">⏭</button>
@@ -446,7 +455,8 @@ export class VerbaReaderSuite {
           .join('')}
       </select>
       <button type="button" class="island-btn" id="tts-stop" title="Stop Read Aloud (Esc)">✕</button>
-    `;
+    `
+    );
 
     this.ttsBarEl.querySelector('#tts-prev')?.addEventListener('click', () => {
       this.sentenceIdx = Math.max(0, this.sentenceIdx - 1);
@@ -468,7 +478,9 @@ export class VerbaReaderSuite {
   public openAskAiModal(sentence: string, translation?: string): void {
     const cleanSent = sentence.trim() || this.sentences[this.sentenceIdx] || window.getSelection()?.toString().trim() || document.title;
     this.askModalEl.hidden = false;
-    this.askModalEl.innerHTML = `
+    setHtmlContent(
+      this.askModalEl,
+      `
       <div class="ask-box">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <b style="color:var(--ink);font-size:16px;">Ask your AI chat (${esc(this.settings.askAiChatProvider)})</b>
@@ -481,7 +493,8 @@ export class VerbaReaderSuite {
           <button type="button" class="wp-btn-sm" id="ask-submit">Ask ↗</button>
         </div>
       </div>
-    `;
+    `
+    );
 
     const textarea = this.askModalEl.querySelector<HTMLTextAreaElement>('#ask-input');
     textarea?.focus();

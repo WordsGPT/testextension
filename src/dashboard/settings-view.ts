@@ -13,6 +13,7 @@ import {
   generatePairingCode,
   UI_LANGUAGES,
 } from '../shared/constants';
+import { setHtmlContent } from '../shared/dom';
 import {
   deleteCustomDict,
   deleteLanguageProgress,
@@ -174,7 +175,9 @@ export function renderSettingsTab(container: HTMLElement, ctx: SettingsViewConte
     })
     .join('');
 
-  container.innerHTML = `
+  setHtmlContent(
+    container,
+    `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap">
       <div>
         <h1 class="page-heading">Settings</h1>
@@ -202,7 +205,8 @@ export function renderSettingsTab(container: HTMLElement, ctx: SettingsViewConte
         }
       </div>
     </div>
-  `;
+  `
+  );
 
   bindSettingsEvents(container, ctx);
 }

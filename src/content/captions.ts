@@ -1,6 +1,7 @@
 import type { PerLanguageOptions, VerbaSettings, SubtitleCue } from '../shared/types';
 import { parseSubtitleFile } from '../shared/imports';
 import { sendBgMessage } from '../shared/messaging';
+import { setHtmlContent } from '../shared/dom';
 import type { VerbaHighlighter } from './highlighter';
 
 export class VerbaCaptions {
@@ -262,11 +263,14 @@ export class VerbaCaptions {
       ? `Captions ON · ${this.cues.length}`
       : `no ${this.settings.activeLang.toUpperCase()}`;
 
-    this.pillEl.innerHTML = `
+    setHtmlContent(
+      this.pillEl,
+      `
       <button type="button" class="island-btn" id="cc-gear-btn" title="Caption settings">⚙</button>
       <button type="button" class="island-btn" id="cc-toggle-btn" title="Toggle Captions (C)">${esc(label)}</button>
       <button type="button" class="island-btn" id="cc-drawer-btn" title="Transcript & Words in this video (W)">☰</button>
-    `;
+    `
+    );
 
     this.pillEl.querySelector('#cc-gear-btn')?.addEventListener('click', () => {
       this.menuOpen = !this.menuOpen;
@@ -328,7 +332,9 @@ export class VerbaCaptions {
         ? 'var(--mono)'
         : 'var(--sans)';
 
-    this.stageEl.innerHTML = `
+    setHtmlContent(
+      this.stageEl,
+      `
       <div class="vc-box" style="background:rgb(17 17 16 / ${bgAlpha});font-family:${fontCss};">
         ${
           subHidden
@@ -353,7 +359,8 @@ export class VerbaCaptions {
           this.loopCurrentLine ? 'border-color:#3b82f6;color:#93c5fd;' : ''
         }">∞</button>
       </div>
-    `;
+    `
+    );
 
     const lineEl = this.stageEl.querySelector<HTMLElement>('#cc-sub-line');
     if (lineEl) {
@@ -587,7 +594,9 @@ export class VerbaCaptions {
     this.menuEl.style.top = `${Math.round(pillRect.bottom + 6)}px`;
     this.menuEl.style.left = `${Math.max(12, Math.round(pillRect.left))}px`;
 
-    this.menuEl.innerHTML = `
+    setHtmlContent(
+      this.menuEl,
+      `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <b style="color:var(--ink)">Dual Captions Settings</b>
         <button type="button" class="wp-icon-btn" id="cc-menu-close">✕</button>
@@ -647,7 +656,8 @@ export class VerbaCaptions {
           <input type="file" id="cc-load-srt" accept=".srt,.vtt,.ass" hidden>
         </label>
       </div>
-    `;
+    `
+    );
 
     this.menuEl.querySelector('#cc-menu-close')?.addEventListener('click', () => {
       this.menuOpen = false;
@@ -719,7 +729,9 @@ export class VerbaCaptions {
     if (!this.drawerOpen) return;
 
     if (this.drawerTab === 'transcript') {
-      this.drawerEl.innerHTML = `
+      setHtmlContent(
+        this.drawerEl,
+        `
         <div class="cc-drawer-head">
           <button type="button" class="wp-tab" aria-selected="true" id="dr-tab-tr">Transcript</button>
           <button type="button" class="wp-tab" aria-selected="false" id="dr-tab-wd">Words in video (W)</button>
@@ -736,7 +748,8 @@ export class VerbaCaptions {
             )
             .join('')}
         </div>
-      `;
+      `
+      );
 
       const listEl = this.drawerEl.querySelector<HTMLElement>('#dr-list');
       if (listEl) {
@@ -792,7 +805,9 @@ export class VerbaCaptions {
         })
         .sort((a, b) => b.count - a.count);
 
-      this.drawerEl.innerHTML = `
+      setHtmlContent(
+        this.drawerEl,
+        `
         <div class="cc-drawer-head">
           <button type="button" class="wp-tab" aria-selected="false" id="dr-tab-tr">Transcript</button>
           <button type="button" class="wp-tab" aria-selected="true" id="dr-tab-wd">Words (${items.length})</button>
@@ -820,7 +835,8 @@ export class VerbaCaptions {
             )
             .join('')}
         </div>
-      `;
+      `
+      );
 
       const wList = this.drawerEl.querySelector<HTMLElement>('#dr-words-list');
       if (wList) this.bindWordInteractions(wList);
@@ -892,10 +908,13 @@ export class VerbaCaptions {
     wrap.id = 'verba-yt-translate';
     wrap.dataset.verbaIgnore = '1';
     wrap.style.cssText = 'display:inline-flex;gap:6px;margin-left:8px;align-items:center;';
-    wrap.innerHTML = `
+    setHtmlContent(
+      wrap,
+      `
       <button type="button" id="verba-yt-tr-btn" style="height:32px;padding:0 10px;border-radius:999px;border:1px solid #3b3a37;background:#191918;color:#f2f0eb;font-size:12px;cursor:pointer;">Translate</button>
       <button type="button" id="verba-yt-cc-btn" style="height:32px;padding:0 10px;border-radius:999px;border:1px solid #3b3a37;background:#191918;color:#f2f0eb;font-size:12px;cursor:pointer;">Subtitles</button>
-    `;
+    `
+    );
     searchForm.parentElement?.appendChild(wrap);
 
     wrap.querySelector('#verba-yt-tr-btn')?.addEventListener('click', async () => {

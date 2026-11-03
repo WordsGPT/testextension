@@ -359,7 +359,7 @@ export async function renderPdfPrintedPage(
   const page = await doc.getPage(Math.max(1, Math.min(doc.numPages, pageNumber)));
   const viewport = page.getViewport({ scale });
 
-  container.innerHTML = '';
+  container.replaceChildren();
   const wrapper = document.createElement('div');
   wrapper.className = 'pdf-printed-stage';
   wrapper.style.position = 'relative';

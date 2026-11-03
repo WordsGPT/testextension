@@ -1676,6 +1676,29 @@ function playAudioUrl(url, speed, volume, onEnd) {
   });
 }
 
+// src/shared/dom.ts
+var sharedParser = null;
+function setHtmlContent(el, html) {
+  if (!html) {
+    el.replaceChildren();
+    return;
+  }
+  if (!sharedParser) {
+    sharedParser = new DOMParser();
+  }
+  const doc = sharedParser.parseFromString(`<!doctype html><html><body>${html}</body></html>`, "text/html");
+  doc.body.querySelectorAll("script, iframe, object, embed").forEach((n) => n.remove());
+  doc.body.querySelectorAll("*").forEach((elem) => {
+    for (const attr of Array.from(elem.attributes)) {
+      if (attr.name.toLowerCase().startsWith("on")) {
+        elem.removeAttribute(attr.name);
+      }
+    }
+  });
+  const nodes = Array.from(doc.body.childNodes).map((n) => document.importNode(n, true));
+  el.replaceChildren(...nodes);
+}
+
 // src/content/styles.ts
 function hexToRgbTuple(hex, fallback = "56 189 248") {
   const clean = hex.replace("#", "").trim();
@@ -2678,7 +2701,7 @@ var VerbaHighlighter = class {
         }
       }
     }
-    let readingHtml;
+    let readingSpec;
     if (this.langOpts.readingsEnabled) {
       const scope = this.langOpts.readingScope;
       const shouldAnnotate = scope === "every_word" || scope === "new_only" && statusNum === 0 || scope === "new_learning" && statusNum >= 0 && statusNum <= 3;
@@ -2691,19 +2714,11 @@ var VerbaHighlighter = class {
           entry?.r2
         );
         if (formatted?.reading) {
-          if (formatted.kanjiStem !== void 0) {
-            readingHtml = `<ruby class="verba-ruby">${escapeHtml(formatted.kanjiStem)}<rt>${escapeHtml(
-              formatted.reading
-            )}</rt></ruby>${escapeHtml(formatted.okurigana || "")}`;
-          } else {
-            readingHtml = `<ruby class="verba-ruby">${escapeHtml(surface)}<rt>${escapeHtml(
-              formatted.reading
-            )}</rt></ruby>`;
-          }
+          readingSpec = formatted;
         }
       }
     }
-    return { statusAttr, readingHtml };
+    return { statusAttr, readingSpec };
   }
   scanAndHighlight(root = this.rootContainer) {
     if (this.diglotMode && !this.isBookOrReader) {
@@ -2755,7 +2770,7 @@ var VerbaHighlighter = class {
           overrides
         );
         const key = phrases.has(tok.normalized) ? tok.normalized : phrases.has(tok.text) ? tok.text : resolved.key;
-        const { statusAttr, readingHtml } = this.computeStatusAttr(key, tok.text, tok.lemmaHint);
+        const { statusAttr, readingSpec } = this.computeStatusAttr(key, tok.text, tok.lemmaHint);
         const el = document.createElement("verba-w");
         el.dataset.w = tok.text;
         el.dataset.key = key;
@@ -2763,8 +2778,8 @@ var VerbaHighlighter = class {
         if (tok.lemmaHint) el.dataset.lemma = tok.lemmaHint;
         if (resolved.primaryEntry?.rank) el.dataset.rank = String(resolved.primaryEntry.rank);
         const insideNativeRuby = Boolean(textNode.parentElement?.closest("ruby"));
-        if (readingHtml && !insideNativeRuby) {
-          el.innerHTML = readingHtml;
+        if (readingSpec && !insideNativeRuby) {
+          applyWordReadingDom(el, tok.text, readingSpec);
         } else {
           el.textContent = tok.text;
         }
@@ -2825,7 +2840,7 @@ var VerbaHighlighter = class {
           continue;
         }
         const key = tok.targetWord;
-        const { statusAttr, readingHtml } = this.computeStatusAttr(key, tok.targetSurface, tok.targetLemma);
+        const { statusAttr, readingSpec } = this.computeStatusAttr(key, tok.targetSurface, tok.targetLemma);
         const el = document.createElement("verba-w");
         el.dataset.diglot = "1";
         el.dataset.orig = tok.originalText || tok.text;
@@ -2835,8 +2850,8 @@ var VerbaHighlighter = class {
         if (tok.targetLemma) el.dataset.lemma = tok.targetLemma;
         if (tok.entry?.rank) el.dataset.rank = String(tok.entry.rank);
         const insideNativeRuby = Boolean(textNode.parentElement?.closest("ruby"));
-        if (readingHtml && !insideNativeRuby) {
-          el.innerHTML = readingHtml;
+        if (readingSpec && !insideNativeRuby) {
+          applyWordReadingDom(el, tok.targetSurface, readingSpec);
         } else {
           el.textContent = tok.targetSurface;
         }
@@ -2909,15 +2924,15 @@ var VerbaHighlighter = class {
       const surface = el.dataset.w || el.textContent || "";
       const key = el.dataset.key || surface;
       const lemmaHint = el.dataset.lemma;
-      const { statusAttr, readingHtml } = this.computeStatusAttr(key, surface, lemmaHint);
+      const { statusAttr, readingSpec } = this.computeStatusAttr(key, surface, lemmaHint);
       if (el.dataset.diglot === "1" && statusAttr === "-1") {
         this.revertDiglotElement(el);
         continue;
       }
       el.dataset.s = statusAttr;
       const insideNativeRuby = Boolean(el.parentElement?.closest("ruby:not(.verba-ruby)"));
-      if (readingHtml && !insideNativeRuby) {
-        el.innerHTML = readingHtml;
+      if (readingSpec && !insideNativeRuby) {
+        applyWordReadingDom(el, surface, readingSpec);
       } else if (el.querySelector("ruby.verba-ruby")) {
         el.textContent = surface;
       }
@@ -3056,8 +3071,18 @@ var VerbaHighlighter = class {
     this.paragraphTimers.clear();
   }
 };
-function escapeHtml(str) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function applyWordReadingDom(el, surface, spec) {
+  const ruby = document.createElement("ruby");
+  ruby.className = "verba-ruby";
+  ruby.appendChild(document.createTextNode(spec.kanjiStem !== void 0 ? spec.kanjiStem : surface));
+  const rt = document.createElement("rt");
+  rt.textContent = spec.reading;
+  ruby.appendChild(rt);
+  if (spec.kanjiStem !== void 0 && spec.okurigana) {
+    el.replaceChildren(ruby, document.createTextNode(spec.okurigana));
+  } else {
+    el.replaceChildren(ruby);
+  }
 }
 
 // src/content/word-panel.ts
@@ -3523,7 +3548,9 @@ var VerbaWordPanel = class {
           <span>\u21C4 Woven in place of <b>"${esc(diglotOrig)}"</b></span>
           <button type="button" class="wp-btn-ghost" id="wp-diglot-revert" style="height:22px;padding:0 8px;font-size:11px;">Revert</button>
         </div>` : "";
-    this.el.innerHTML = `
+    setHtmlContent(
+      this.el,
+      `
       <div class="wp-top">
         <div class="wp-head">
           <span class="wp-word" ${genderAttr}>${esc(headword)}</span>
@@ -3553,7 +3580,8 @@ var VerbaWordPanel = class {
       ${ankiPickerHtml}
       ${toastHtml}
       ${gradesHtml}
-    `;
+    `
+    );
     this.bindEvents();
   }
   bindEvents() {
@@ -3899,7 +3927,9 @@ var VerbaReaderSuite = class {
     const paper = this.settings.readerTheme || "dark";
     this.readerEl.dataset.paper = paper;
     const fontStack = this.settings.readerFont === "sans" ? "var(--sans)" : this.settings.readerFont === "mono" ? "var(--mono)" : this.settings.readerFont === "custom" && this.settings.customFontName ? `"${this.settings.customFontName}", var(--serif)` : "var(--serif)";
-    this.readerEl.innerHTML = `
+    setHtmlContent(
+      this.readerEl,
+      `
       <div class="reader-bar">
         <span class="reader-bar-title">${esc2(title)}</span>
         <button type="button" class="wp-btn-ghost" data-paper-pick="white">White</button>
@@ -3922,7 +3952,8 @@ var VerbaReaderSuite = class {
           ${bodyHtml}
         </article>
       </div>
-    `;
+    `
+    );
     const articleBody = this.readerEl.querySelector("#rv-article-body");
     if (articleBody) {
       this.highlighter.scanAndHighlight(articleBody);
@@ -4027,7 +4058,9 @@ var VerbaReaderSuite = class {
         this.sentenceTranslationCache.set(current, trans);
       }
     }
-    this.sentenceModalEl.innerHTML = `
+    setHtmlContent(
+      this.sentenceModalEl,
+      `
       <div class="sentence-card" data-paper="${this.settings.readerTheme || "dark"}">
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--ink-3);">
           <span>Sentence ${this.sentenceIdx + 1} / ${this.sentences.length}</span>
@@ -4046,7 +4079,8 @@ var VerbaReaderSuite = class {
           <button type="button" class="wp-btn-ghost" id="sc-next">Next (D) \u203A</button>
         </div>
       </div>
-    `;
+    `
+    );
     const bodyEl = this.sentenceModalEl.querySelector("#sc-body");
     if (bodyEl) {
       this.highlighter.scanAndHighlight(bodyEl);
@@ -4146,7 +4180,9 @@ var VerbaReaderSuite = class {
       return;
     }
     this.ttsBarEl.hidden = false;
-    this.ttsBarEl.innerHTML = `
+    setHtmlContent(
+      this.ttsBarEl,
+      `
       <button type="button" class="island-btn" id="tts-prev" title="Previous sentence">\u23EE</button>
       <button type="button" class="island-btn" id="tts-toggle">${this.isReadingPaused ? "\u25B6 Resume" : "\u23F8 Pause"}</button>
       <button type="button" class="island-btn" id="tts-next" title="Next sentence">\u23ED</button>
@@ -4155,7 +4191,8 @@ var VerbaReaderSuite = class {
         ${[0.75, 1, 1.25, 1.5, 1.75, 2].map((sp) => `<option value="${sp}" ${this.settings.voiceSpeed === sp ? "selected" : ""}>${sp}\xD7</option>`).join("")}
       </select>
       <button type="button" class="island-btn" id="tts-stop" title="Stop Read Aloud (Esc)">\u2715</button>
-    `;
+    `
+    );
     this.ttsBarEl.querySelector("#tts-prev")?.addEventListener("click", () => {
       this.sentenceIdx = Math.max(0, this.sentenceIdx - 1);
       this.speakActiveSentenceLoop();
@@ -4175,7 +4212,9 @@ var VerbaReaderSuite = class {
   openAskAiModal(sentence, translation) {
     const cleanSent = sentence.trim() || this.sentences[this.sentenceIdx] || window.getSelection()?.toString().trim() || document.title;
     this.askModalEl.hidden = false;
-    this.askModalEl.innerHTML = `
+    setHtmlContent(
+      this.askModalEl,
+      `
       <div class="ask-box">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <b style="color:var(--ink);font-size:16px;">Ask your AI chat (${esc2(this.settings.askAiChatProvider)})</b>
@@ -4188,7 +4227,8 @@ var VerbaReaderSuite = class {
           <button type="button" class="wp-btn-sm" id="ask-submit">Ask \u2197</button>
         </div>
       </div>
-    `;
+    `
+    );
     const textarea = this.askModalEl.querySelector("#ask-input");
     textarea?.focus();
     const submit = () => {
@@ -4455,11 +4495,14 @@ var VerbaCaptions = class {
     this.pillEl.style.left = `${Math.max(12, Math.round(rect.left + 12))}px`;
     const hasSubs = this.cues.length > 0;
     const label = !this.settings.captionsEnabled ? "Captions OFF" : hasSubs ? `Captions ON \xB7 ${this.cues.length}` : `no ${this.settings.activeLang.toUpperCase()}`;
-    this.pillEl.innerHTML = `
+    setHtmlContent(
+      this.pillEl,
+      `
       <button type="button" class="island-btn" id="cc-gear-btn" title="Caption settings">\u2699</button>
       <button type="button" class="island-btn" id="cc-toggle-btn" title="Toggle Captions (C)">${esc3(label)}</button>
       <button type="button" class="island-btn" id="cc-drawer-btn" title="Transcript & Words in this video (W)">\u2630</button>
-    `;
+    `
+    );
     this.pillEl.querySelector("#cc-gear-btn")?.addEventListener("click", () => {
       this.menuOpen = !this.menuOpen;
       this.renderMenu();
@@ -4505,7 +4548,9 @@ var VerbaCaptions = class {
     const transHidden = this.settings.translationMode === "hide" && this.peekStep < 2;
     const bgAlpha = (this.settings.subtitleBgOpacity / 100).toFixed(2);
     const fontCss = this.settings.subtitleFont === "serif" ? "var(--serif)" : this.settings.subtitleFont === "mono" ? "var(--mono)" : "var(--sans)";
-    this.stageEl.innerHTML = `
+    setHtmlContent(
+      this.stageEl,
+      `
       <div class="vc-box" style="background:rgb(17 17 16 / ${bgAlpha});font-family:${fontCss};">
         ${subHidden ? `<div style="color:var(--ink-3);font-size:13px;">[Subtitle hidden \xB7 press E to peek]</div>` : `<div class="vc-line ${subBlurred ? "blurred" : ""}" id="cc-sub-line" data-size="${this.settings.subtitleSize}">${esc3(cue.text)}</div>`}
         ${cue.translation && !transHidden ? `<div class="vc-trans ${transBlurred ? "blurred" : ""}" data-size="${this.settings.translationSize}">${esc3(cue.translation)}</div>` : ""}
@@ -4516,7 +4561,8 @@ var VerbaCaptions = class {
         <button type="button" class="vc-mini-btn" id="cc-next" title="Next line (D)">\u23ED</button>
         <button type="button" class="vc-mini-btn" id="cc-loop" title="Loop line" style="${this.loopCurrentLine ? "border-color:#3b82f6;color:#93c5fd;" : ""}">\u221E</button>
       </div>
-    `;
+    `
+    );
     const lineEl = this.stageEl.querySelector("#cc-sub-line");
     if (lineEl) {
       this.highlighter.scanAndHighlight(lineEl);
@@ -4732,7 +4778,9 @@ var VerbaCaptions = class {
     const pillRect = this.pillEl.getBoundingClientRect();
     this.menuEl.style.top = `${Math.round(pillRect.bottom + 6)}px`;
     this.menuEl.style.left = `${Math.max(12, Math.round(pillRect.left))}px`;
-    this.menuEl.innerHTML = `
+    setHtmlContent(
+      this.menuEl,
+      `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <b style="color:var(--ink)">Dual Captions Settings</b>
         <button type="button" class="wp-icon-btn" id="cc-menu-close">\u2715</button>
@@ -4790,7 +4838,8 @@ var VerbaCaptions = class {
           <input type="file" id="cc-load-srt" accept=".srt,.vtt,.ass" hidden>
         </label>
       </div>
-    `;
+    `
+    );
     this.menuEl.querySelector("#cc-menu-close")?.addEventListener("click", () => {
       this.menuOpen = false;
       this.menuEl.hidden = true;
@@ -4859,7 +4908,9 @@ var VerbaCaptions = class {
   renderDrawer() {
     if (!this.drawerOpen) return;
     if (this.drawerTab === "transcript") {
-      this.drawerEl.innerHTML = `
+      setHtmlContent(
+        this.drawerEl,
+        `
         <div class="cc-drawer-head">
           <button type="button" class="wp-tab" aria-selected="true" id="dr-tab-tr">Transcript</button>
           <button type="button" class="wp-tab" aria-selected="false" id="dr-tab-wd">Words in video (W)</button>
@@ -4868,13 +4919,14 @@ var VerbaCaptions = class {
         </div>
         <div class="cc-drawer-list" id="dr-list">
           ${this.cues.map(
-        (c, idx) => `<div class="cc-cue-item ${idx === this.activeCueIdx ? "active" : ""}" data-cue-idx="${idx}">
+          (c, idx) => `<div class="cc-cue-item ${idx === this.activeCueIdx ? "active" : ""}" data-cue-idx="${idx}">
                 <span class="cc-cue-time">${formatTime(c.start)}</span>
                 <span class="cc-cue-text">${esc3(c.text)}</span>
               </div>`
-      ).join("")}
+        ).join("")}
         </div>
-      `;
+      `
+      );
       const listEl = this.drawerEl.querySelector("#dr-list");
       if (listEl) {
         this.highlighter.scanAndHighlight(listEl);
@@ -4924,7 +4976,9 @@ var VerbaCaptions = class {
         if (this.wordsFilter === "both") return ["0", "1", "2", "3", "4"].includes(it.status);
         return true;
       }).sort((a, b) => b.count - a.count);
-      this.drawerEl.innerHTML = `
+      setHtmlContent(
+        this.drawerEl,
+        `
         <div class="cc-drawer-head">
           <button type="button" class="wp-tab" aria-selected="false" id="dr-tab-tr">Transcript</button>
           <button type="button" class="wp-tab" aria-selected="true" id="dr-tab-wd">Words (${items.length})</button>
@@ -4932,20 +4986,21 @@ var VerbaCaptions = class {
         </div>
         <div style="display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid var(--border-subtle);">
           ${["both", "new", "learning", "all"].map(
-        (f) => `<button type="button" class="wp-btn-ghost dr-chip" data-f="${f}" style="${this.wordsFilter === f ? "border-color:#3b82f6;color:var(--ink);" : ""}">${f === "both" ? "New + Learning" : f[0].toUpperCase() + f.slice(1)}</button>`
-      ).join("")}
+          (f) => `<button type="button" class="wp-btn-ghost dr-chip" data-f="${f}" style="${this.wordsFilter === f ? "border-color:#3b82f6;color:var(--ink);" : ""}">${f === "both" ? "New + Learning" : f[0].toUpperCase() + f.slice(1)}</button>`
+        ).join("")}
         </div>
         <div class="cc-drawer-list" id="dr-words-list">
           ${items.map(
-        (it) => `<div class="cc-cue-item" style="justify-content:space-between;align-items:center;">
+          (it) => `<div class="cc-cue-item" style="justify-content:space-between;align-items:center;">
                 <span><verba-w data-w="${esc3(it.word)}" data-key="${esc3(it.word)}" data-s="${esc3(it.status)}">${esc3(
-          it.word
-        )}</verba-w> <span style="color:var(--ink-3);font-size:12px;">\xD7${it.count}</span></span>
+            it.word
+          )}</verba-w> <span style="color:var(--ink-3);font-size:12px;">\xD7${it.count}</span></span>
                 <button type="button" class="wp-icon-btn dr-jump-cue" data-cue="${it.firstCueIdx}" title="Jump to line">\u25B6</button>
               </div>`
-      ).join("")}
+        ).join("")}
         </div>
-      `;
+      `
+      );
       const wList = this.drawerEl.querySelector("#dr-words-list");
       if (wList) this.bindWordInteractions(wList);
       this.drawerEl.querySelectorAll(".dr-chip").forEach((b) => {
@@ -5009,10 +5064,13 @@ var VerbaCaptions = class {
     wrap.id = "verba-yt-translate";
     wrap.dataset.verbaIgnore = "1";
     wrap.style.cssText = "display:inline-flex;gap:6px;margin-left:8px;align-items:center;";
-    wrap.innerHTML = `
+    setHtmlContent(
+      wrap,
+      `
       <button type="button" id="verba-yt-tr-btn" style="height:32px;padding:0 10px;border-radius:999px;border:1px solid #3b3a37;background:#191918;color:#f2f0eb;font-size:12px;cursor:pointer;">Translate</button>
       <button type="button" id="verba-yt-cc-btn" style="height:32px;padding:0 10px;border-radius:999px;border:1px solid #3b3a37;background:#191918;color:#f2f0eb;font-size:12px;cursor:pointer;">Subtitles</button>
-    `;
+    `
+    );
     searchForm.parentElement?.appendChild(wrap);
     wrap.querySelector("#verba-yt-tr-btn")?.addEventListener("click", async () => {
       const inp = document.querySelector('input#search, input[name="search_query"]');
@@ -5209,7 +5267,9 @@ var VerbaLocalVideoApp = class {
   render() {
     const lang = this.settings.activeLang;
     const langOptsHtml = this.settings.learningLangs.map((c) => `<option value="${c}" ${c === lang ? "selected" : ""}>${esc4(LANG_MAP[c]?.name || c)}</option>`).join("");
-    this.rootEl.innerHTML = `
+    setHtmlContent(
+      this.rootEl,
+      `
       <header class="topbar">
         <div class="topbar-left">
           <a href="dashboard.html" class="brand">
@@ -5263,7 +5323,7 @@ var VerbaLocalVideoApp = class {
           <h2>Recent Videos (${this.history.length})</h2>
           ${this.history.length === 0 ? `<p style="color:var(--ink-3)">Your last 10 watched videos will appear here so you can resume right where you left off.</p>` : `<div class="history-grid">
                 ${this.history.map(
-      (h) => `
+        (h) => `
                   <div class="history-card">
                     <div class="history-card-title">${esc4(h.title)}</div>
                     <div class="history-card-meta">
@@ -5276,11 +5336,12 @@ var VerbaLocalVideoApp = class {
                     </div>
                   </div>
                 `
-    ).join("")}
+      ).join("")}
               </div>`}
         </section>
       </main>
-    `;
+    `
+    );
     const videoEl = document.getElementById("verba-local-video");
     this.captions.attachToVideo(videoEl);
     videoEl.addEventListener("timeupdate", () => {

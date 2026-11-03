@@ -131,7 +131,11 @@ export class VerbaHighlighter {
     return { lexicon, phrases, overrides };
   }
 
-  public computeStatusAttr(key: string, surface: string, lemmaHint?: string): { statusAttr: string; readingHtml?: string } {
+  public computeStatusAttr(
+    key: string,
+    surface: string,
+    lemmaHint?: string
+  ): { statusAttr: string; readingSpec?: { reading: string; kanjiStem?: string; okurigana?: string } } {
     const { overrides } = this.getPhrasesAndCustomLexicon();
     const resolved = resolveTrackingKey(
       surface,
@@ -169,7 +173,7 @@ export class VerbaHighlighter {
     }
 
     // Check Readings above characters
-    let readingHtml: string | undefined;
+    let readingSpec: { reading: string; kanjiStem?: string; okurigana?: string } | undefined;
     if (this.langOpts.readingsEnabled) {
       const scope = this.langOpts.readingScope;
       const shouldAnnotate =
@@ -186,20 +190,12 @@ export class VerbaHighlighter {
           entry?.r2
         );
         if (formatted?.reading) {
-          if (formatted.kanjiStem !== undefined) {
-            readingHtml = `<ruby class="verba-ruby">${escapeHtml(formatted.kanjiStem)}<rt>${escapeHtml(
-              formatted.reading
-            )}</rt></ruby>${escapeHtml(formatted.okurigana || '')}`;
-          } else {
-            readingHtml = `<ruby class="verba-ruby">${escapeHtml(surface)}<rt>${escapeHtml(
-              formatted.reading
-            )}</rt></ruby>`;
-          }
+          readingSpec = formatted;
         }
       }
     }
 
-    return { statusAttr, readingHtml };
+    return { statusAttr, readingSpec };
   }
 
   public scanAndHighlight(root: ParentNode = this.rootContainer): void {
@@ -260,7 +256,7 @@ export class VerbaHighlighter {
           overrides
         );
         const key = phrases.has(tok.normalized) ? tok.normalized : phrases.has(tok.text) ? tok.text : resolved.key;
-        const { statusAttr, readingHtml } = this.computeStatusAttr(key, tok.text, tok.lemmaHint);
+        const { statusAttr, readingSpec } = this.computeStatusAttr(key, tok.text, tok.lemmaHint);
 
         const el = document.createElement('verba-w');
         el.dataset.w = tok.text;
@@ -271,8 +267,8 @@ export class VerbaHighlighter {
 
         // Preserve existing native <ruby> inside Japanese books without duplicating furigana
         const insideNativeRuby = Boolean(textNode.parentElement?.closest('ruby'));
-        if (readingHtml && !insideNativeRuby) {
-          el.innerHTML = readingHtml;
+        if (readingSpec && !insideNativeRuby) {
+          applyWordReadingDom(el, tok.text, readingSpec);
         } else {
           el.textContent = tok.text;
         }
@@ -345,7 +341,7 @@ export class VerbaHighlighter {
         }
 
         const key = tok.targetWord;
-        const { statusAttr, readingHtml } = this.computeStatusAttr(key, tok.targetSurface, tok.targetLemma);
+        const { statusAttr, readingSpec } = this.computeStatusAttr(key, tok.targetSurface, tok.targetLemma);
 
         const el = document.createElement('verba-w');
         el.dataset.diglot = '1';
@@ -357,8 +353,8 @@ export class VerbaHighlighter {
         if (tok.entry?.rank) el.dataset.rank = String(tok.entry.rank);
 
         const insideNativeRuby = Boolean(textNode.parentElement?.closest('ruby'));
-        if (readingHtml && !insideNativeRuby) {
-          el.innerHTML = readingHtml;
+        if (readingSpec && !insideNativeRuby) {
+          applyWordReadingDom(el, tok.targetSurface, readingSpec);
         } else {
           el.textContent = tok.targetSurface;
         }
@@ -440,15 +436,15 @@ export class VerbaHighlighter {
       const surface = el.dataset.w || el.textContent || '';
       const key = el.dataset.key || surface;
       const lemmaHint = el.dataset.lemma;
-      const { statusAttr, readingHtml } = this.computeStatusAttr(key, surface, lemmaHint);
+      const { statusAttr, readingSpec } = this.computeStatusAttr(key, surface, lemmaHint);
       if (el.dataset.diglot === '1' && statusAttr === '-1') {
         this.revertDiglotElement(el);
         continue;
       }
       el.dataset.s = statusAttr;
       const insideNativeRuby = Boolean(el.parentElement?.closest('ruby:not(.verba-ruby)'));
-      if (readingHtml && !insideNativeRuby) {
-        el.innerHTML = readingHtml;
+      if (readingSpec && !insideNativeRuby) {
+        applyWordReadingDom(el, surface, readingSpec);
       } else if (el.querySelector('ruby.verba-ruby')) {
         el.textContent = surface;
       }
@@ -600,10 +596,20 @@ export class VerbaHighlighter {
   }
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function applyWordReadingDom(
+  el: HTMLElement,
+  surface: string,
+  spec: { reading: string; kanjiStem?: string; okurigana?: string }
+): void {
+  const ruby = document.createElement('ruby');
+  ruby.className = 'verba-ruby';
+  ruby.appendChild(document.createTextNode(spec.kanjiStem !== undefined ? spec.kanjiStem : surface));
+  const rt = document.createElement('rt');
+  rt.textContent = spec.reading;
+  ruby.appendChild(rt);
+  if (spec.kanjiStem !== undefined && spec.okurigana) {
+    el.replaceChildren(ruby, document.createTextNode(spec.okurigana));
+  } else {
+    el.replaceChildren(ruby);
+  }
 }

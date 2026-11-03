@@ -1,6 +1,7 @@
 import type { LangCode, VerbaSettings } from '../shared/types';
 import type { PageWordCounts } from './highlighter';
 import { LANG_MAP } from '../shared/languages';
+import { setHtmlContent } from '../shared/dom';
 
 export interface IslandTodayStats {
   wordsMarkedKnown: number;
@@ -58,10 +59,13 @@ export class VerbaIsland {
     const toName = LANG_MAP[toLang]?.name || toLang;
     const fromName = LANG_MAP[fromLang]?.name || fromLang;
     this.switchNoteEl.hidden = false;
-    this.switchNoteEl.innerHTML = `
+    setHtmlContent(
+      this.switchNoteEl,
+      `
       <span>Switched to <b>${toName}</b></span>
       <button type="button" class="island-btn" id="verba-switch-back">Back to ${fromName}</button>
-    `;
+    `
+    );
     this.switchNoteEl.querySelector('#verba-switch-back')?.addEventListener('click', () => {
       this.switchNoteEl.hidden = true;
       this.callbacks.onSwitchLanguage(fromLang);
@@ -109,7 +113,9 @@ export class VerbaIsland {
         ? `<span class="island-stat" title="Target-language words woven into this page"><i class="island-dot diglot"></i><b id="island-diglot-count">${this.counts.diglotWords}</b> woven</span>`
         : '';
 
-    this.el.innerHTML = `
+    setHtmlContent(
+      this.el,
+      `
       <button type="button" class="island-btn" id="island-tally-toggle" title="Today's tally">${
         this.tallyOpen ? '▾' : '▴'
       }</button>
@@ -131,7 +137,8 @@ export class VerbaIsland {
         LANG_MAP[this.settings.activeLang]?.name || this.settings.activeLang
       }">Vocabulary <b id="island-vocab-count">${this.totalKnownCount.toLocaleString()}</b></span>
       <button type="button" class="island-btn" id="island-know-all" title="Mark all new words on this page known (Shift+K)">Know all</button>
-    `;
+    `
+    );
 
     this.el.querySelector('#island-tally-toggle')?.addEventListener('click', () => {
       this.tallyOpen = !this.tallyOpen;
@@ -158,7 +165,9 @@ export class VerbaIsland {
     this.tallyEl.hidden = !this.tallyOpen;
     if (this.tallyOpen) {
       const mins = Math.round(this.todayStats.secondsListened / 60);
-      this.tallyEl.innerHTML = `
+      setHtmlContent(
+        this.tallyEl,
+        `
         <div style="font-weight:600;color:var(--ink);margin-bottom:6px;">Today’s tally · ${
           LANG_MAP[this.settings.activeLang]?.name || this.settings.activeLang
         }</div>
@@ -166,7 +175,8 @@ export class VerbaIsland {
         <div class="tally-row"><span>Frequent known today</span><b>${this.todayStats.frequentMarkedKnown}</b></div>
         <div class="tally-row"><span>Words read today</span><b>${this.todayStats.wordsRead.toLocaleString()}</b></div>
         <div class="tally-row"><span>Listening today</span><b>${mins} min</b></div>
-      `;
+      `
+      );
     }
   }
 }

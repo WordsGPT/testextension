@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import esbuild from 'esbuild';
+import { unzipSync, strFromU8 } from 'fflate';
 
 let core;
 
@@ -353,5 +354,42 @@ describe('Verba Inline Word Replacement (Diglot Weave Engine)', () => {
     assert.ok(forestTok, 'Expected learning word foresta to be woven');
     assert.equal(forestTok.originalText, 'forest');
     assert.equal(forestTok.status, 2);
+  });
+});
+
+describe('Verba Firefox AMO Package & Linter Compliance', () => {
+  it('packages dist/verba-firefox.zip with data_collection_permissions, strict_min_version >= 142.0, and zero unsafe innerHTML/Function/import patterns', () => {
+    const zipPath = path.resolve('dist/verba-firefox.zip');
+    assert.ok(fs.existsSync(zipPath), 'dist/verba-firefox.zip must exist');
+    const archive = unzipSync(new Uint8Array(fs.readFileSync(zipPath)));
+    assert.ok(archive['manifest.json'], 'Firefox zip must contain manifest.json');
+
+    const ffManifest = JSON.parse(strFromU8(archive['manifest.json']));
+    const gecko = ffManifest.browser_specific_settings?.gecko;
+    assert.ok(gecko, 'browser_specific_settings.gecko must be defined');
+    assert.ok(
+      parseFloat(gecko.strict_min_version) >= 142,
+      `Expected strict_min_version >= 142.0 for background.type & data_collection_permissions, got ${gecko.strict_min_version}`
+    );
+    assert.deepEqual(gecko.data_collection_permissions, {
+      required: ['none'],
+    });
+
+    const bundleFiles = [
+      'dist/popup.js',
+      'dist/video.js',
+      'dist/dashboard.js',
+      'dist/content.js',
+      'dist/books.js',
+      'dist/background.js',
+      'dist/pdf.worker.min.mjs',
+    ];
+    for (const rel of bundleFiles) {
+      assert.ok(archive[rel], `Missing ${rel} in dist/verba-firefox.zip`);
+      const code = strFromU8(archive[rel]);
+      assert.equal(/\.innerHTML\s*=/.test(code), false, `Unsafe assignment to innerHTML found in ${rel}`);
+      assert.equal(/new\s+Function\s*\(/.test(code), false, `Function constructor found in ${rel}`);
+      assert.equal(/import\s*\(\s*\/\*.*?\*\/\s*this\.workerSrc\s*\)/.test(code), false, `Unsafe dynamic import(this.workerSrc) found in ${rel}`);
+    }
   });
 });

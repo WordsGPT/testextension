@@ -41,6 +41,7 @@ import { LANGUAGES, LANG_MAP, getDefaultLangOptions } from '../shared/languages'
 import { sendBgMessage } from '../shared/messaging';
 import { getExtApi } from '../shared/webext';
 import { speakText } from '../shared/tts';
+import { setHtmlContent } from '../shared/dom';
 import { SHADOW_UI_CSS } from '../content/styles';
 import { VerbaWordPanel } from '../content/word-panel';
 import { PlacementViewController } from './placement-view';
@@ -313,7 +314,9 @@ class VerbaDashboardApp {
       ['settings', 'Settings'],
     ];
 
-    this.rootEl.innerHTML = `
+    setHtmlContent(
+      this.rootEl,
+      `
       <header class="dash-topbar">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <a href="#home" class="brand">
@@ -345,7 +348,8 @@ class VerbaDashboardApp {
 
       <main class="dash-container" id="dash-main-pane"></main>
       ${this.toastMsg ? `<div class="toast-banner">${esc(this.toastMsg)}</div>` : ''}
-    `;
+    `
+    );
 
     const pane = document.getElementById('dash-main-pane')!;
     switch (this.activeTab) {
@@ -470,7 +474,9 @@ class VerbaDashboardApp {
     const streak = this.computeStreak(dailyMap);
     const showOnboarding = !this.settings.onboarded || this.forceOnboarding;
 
-    pane.innerHTML = `
+    setHtmlContent(
+      pane,
+      `
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px;">
         <div>
           <h1 class="page-heading" style="margin-bottom:4px;">Immersion reading &amp; vocabulary, tailored to your frontier.</h1>
@@ -569,7 +575,8 @@ class VerbaDashboardApp {
           </div>
         </section>
       </div>
-    `;
+    `
+    );
 
     this.bindOnboardingEvents(pane);
 
@@ -918,7 +925,9 @@ class VerbaDashboardApp {
 
   private renderWords(pane: HTMLElement): void {
     const langName = LANG_MAP[this.settings.activeLang]?.name || this.settings.activeLang;
-    pane.innerHTML = `
+    setHtmlContent(
+      pane,
+      `
       <h1 class="page-heading">${esc(langName)} Words</h1>
       <p class="page-sub">Search your graded words, sweep common words Known, explore frequency bands, or import from LingQ / Language Reactor / HanziHero / Anki.</p>
 
@@ -938,7 +947,8 @@ class VerbaDashboardApp {
       </div>
 
       <div id="words-subpane"></div>
-    `;
+    `
+    );
 
     pane.querySelectorAll<HTMLButtonElement>('[data-wsub]').forEach((b) => {
       b.addEventListener('click', () => {
@@ -981,7 +991,9 @@ class VerbaDashboardApp {
       return b.updatedAt - a.updatedAt;
     });
 
-    sub.innerHTML = `
+    setHtmlContent(
+      sub,
+      `
       <div class="card">
         <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:14px">
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -1062,7 +1074,8 @@ class VerbaDashboardApp {
         `
         }
       </div>
-    `;
+    `
+    );
 
     sub.querySelector<HTMLInputElement>('#mw-search')?.addEventListener('input', (e) => {
       this.myWordsSearch = (e.target as HTMLInputElement).value;
@@ -1154,7 +1167,9 @@ class VerbaDashboardApp {
       })
       .map((e) => e.w);
 
-    sub.innerHTML = `
+    setHtmlContent(
+      sub,
+      `
       <div class="card">
         <h2 class="card-title">Frequency Band Vocabulary Sweep</h2>
         <p style="margin:0 0 14px;color:var(--ink-2);font-size:13.5px">
@@ -1192,7 +1207,8 @@ class VerbaDashboardApp {
             .join('')}
         </div>
       </div>
-    `;
+    `
+    );
 
     sub.querySelector<HTMLInputElement>('#wall-slider')?.addEventListener('input', (e) => {
       this.markKnownSliderN = Number((e.target as HTMLInputElement).value);
@@ -1254,7 +1270,9 @@ class VerbaDashboardApp {
       ? allRanked.filter((e) => e.w.toLowerCase().includes(q) || String(e.rank) === q)
       : allRanked.slice(this.commonBandStart - 1, this.commonBandStart + 99);
 
-    sub.innerHTML = `
+    setHtmlContent(
+      sub,
+      `
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -1303,7 +1321,8 @@ class VerbaDashboardApp {
           </tbody>
         </table>
       </div>
-    `;
+    `
+    );
 
     sub.querySelector<HTMLSelectElement>('#common-band-sel')?.addEventListener('change', (e) => {
       this.commonBandStart = Number((e.target as HTMLSelectElement).value);
@@ -1344,7 +1363,9 @@ class VerbaDashboardApp {
   }
 
   private renderWordsToolsSub(sub: HTMLElement): void {
-    sub.innerHTML = `
+    setHtmlContent(
+      sub,
+      `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
         <div class="card">
           <h3 class="card-title">Import from LingQ (CSV)</h3>
@@ -1408,7 +1429,8 @@ class VerbaDashboardApp {
       `
           : ''
       }
-    `;
+    `
+    );
 
     sub.querySelector<HTMLInputElement>('#imp-lingq')?.addEventListener('change', async (e) => {
       const f = (e.target as HTMLInputElement).files?.[0];
@@ -1462,7 +1484,9 @@ class VerbaDashboardApp {
 
   private renderBooksOverview(pane: HTMLElement): void {
     const langName = LANG_MAP[this.settings.activeLang]?.name || this.settings.activeLang;
-    pane.innerHTML = `
+    setHtmlContent(
+      pane,
+      `
       <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:20px;flex-wrap:wrap">
         <div>
           <h1 class="page-heading">${esc(langName)} Books Shelf</h1>
@@ -1487,11 +1511,14 @@ class VerbaDashboardApp {
           )
           .join('')}
       </div>
-    `;
+    `
+    );
   }
 
   private renderVideosOverview(pane: HTMLElement): void {
-    pane.innerHTML = `
+    setHtmlContent(
+      pane,
+      `
       <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:20px;flex-wrap:wrap">
         <div>
           <h1 class="page-heading">Videos &amp; Dual Captions</h1>
@@ -1523,7 +1550,8 @@ class VerbaDashboardApp {
             </div>`
         }
       </div>
-    `;
+    `
+    );
   }
 
   private renderProgress(pane: HTMLElement): void {
@@ -1575,7 +1603,9 @@ class VerbaDashboardApp {
     const maxReadBar = Math.max(100, ...last14.map((x) => x.read));
     const maxListenBar = Math.max(10, ...last14.map((x) => x.listenMin));
 
-    pane.innerHTML = `
+    setHtmlContent(
+      pane,
+      `
       <h1 class="page-heading">${esc(langName)} Progress</h1>
       <p class="page-sub">Honest reading &amp; listening tallies, calendar streaks, CEFR vocabulary estimate, and polyglot comparison.</p>
 
@@ -1704,7 +1734,8 @@ class VerbaDashboardApp {
             </table>`
         }
       </div>
-    `;
+    `
+    );
 
     this.populatePolyglotTable();
 
@@ -1770,7 +1801,9 @@ class VerbaDashboardApp {
     const cutoffDate = getLogicalDateString(Date.now() - daysBack * 86400000, this.settings.dayEndsAtHour);
 
     const orderedLangs = this.settings.learningLangs;
-    mount.innerHTML = `
+    setHtmlContent(
+      mount,
+      `
       <table class="data-table">
         <thead>
           <tr><th>Language</th><th>Known Words</th><th>Words Read</th><th>Time Listened</th></tr>
@@ -1795,7 +1828,8 @@ class VerbaDashboardApp {
             .join('')}
         </tbody>
       </table>
-    `;
+    `
+    );
   }
 
   private renderMilestones(pane: HTMLElement): void {
@@ -1820,7 +1854,9 @@ class VerbaDashboardApp {
       (n) => this.notesLangFilter === 'all' || n.lang === this.notesLangFilter
     );
 
-    pane.innerHTML = `
+    setHtmlContent(
+      pane,
+      `
       <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:20px;flex-wrap:wrap">
         <div>
           <h1 class="page-heading">Milestones &amp; Study Log</h1>
@@ -1890,7 +1926,8 @@ class VerbaDashboardApp {
           </form>
         </aside>
       </div>
-    `;
+    `
+    );
 
     pane.querySelector<HTMLSelectElement>('#notes-lang-filter')?.addEventListener('change', (e) => {
       this.notesLangFilter = (e.target as HTMLSelectElement).value as 'all' | LangCode;

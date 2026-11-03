@@ -1664,6 +1664,29 @@ function playAudioUrl(url, speed, volume, onEnd) {
   });
 }
 
+// src/shared/dom.ts
+var sharedParser = null;
+function setHtmlContent(el, html) {
+  if (!html) {
+    el.replaceChildren();
+    return;
+  }
+  if (!sharedParser) {
+    sharedParser = new DOMParser();
+  }
+  const doc = sharedParser.parseFromString(`<!doctype html><html><body>${html}</body></html>`, "text/html");
+  doc.body.querySelectorAll("script, iframe, object, embed").forEach((n) => n.remove());
+  doc.body.querySelectorAll("*").forEach((elem) => {
+    for (const attr of Array.from(elem.attributes)) {
+      if (attr.name.toLowerCase().startsWith("on")) {
+        elem.removeAttribute(attr.name);
+      }
+    }
+  });
+  const nodes = Array.from(doc.body.childNodes).map((n) => document.importNode(n, true));
+  el.replaceChildren(...nodes);
+}
+
 // src/content/styles.ts
 function hexToRgbTuple(hex, fallback = "56 189 248") {
   const clean = hex.replace("#", "").trim();
@@ -2666,7 +2689,7 @@ var VerbaHighlighter = class {
         }
       }
     }
-    let readingHtml;
+    let readingSpec;
     if (this.langOpts.readingsEnabled) {
       const scope = this.langOpts.readingScope;
       const shouldAnnotate = scope === "every_word" || scope === "new_only" && statusNum === 0 || scope === "new_learning" && statusNum >= 0 && statusNum <= 3;
@@ -2679,19 +2702,11 @@ var VerbaHighlighter = class {
           entry?.r2
         );
         if (formatted?.reading) {
-          if (formatted.kanjiStem !== void 0) {
-            readingHtml = `<ruby class="verba-ruby">${escapeHtml(formatted.kanjiStem)}<rt>${escapeHtml(
-              formatted.reading
-            )}</rt></ruby>${escapeHtml(formatted.okurigana || "")}`;
-          } else {
-            readingHtml = `<ruby class="verba-ruby">${escapeHtml(surface)}<rt>${escapeHtml(
-              formatted.reading
-            )}</rt></ruby>`;
-          }
+          readingSpec = formatted;
         }
       }
     }
-    return { statusAttr, readingHtml };
+    return { statusAttr, readingSpec };
   }
   scanAndHighlight(root = this.rootContainer) {
     if (this.diglotMode && !this.isBookOrReader) {
@@ -2743,7 +2758,7 @@ var VerbaHighlighter = class {
           overrides
         );
         const key = phrases.has(tok.normalized) ? tok.normalized : phrases.has(tok.text) ? tok.text : resolved.key;
-        const { statusAttr, readingHtml } = this.computeStatusAttr(key, tok.text, tok.lemmaHint);
+        const { statusAttr, readingSpec } = this.computeStatusAttr(key, tok.text, tok.lemmaHint);
         const el = document.createElement("verba-w");
         el.dataset.w = tok.text;
         el.dataset.key = key;
@@ -2751,8 +2766,8 @@ var VerbaHighlighter = class {
         if (tok.lemmaHint) el.dataset.lemma = tok.lemmaHint;
         if (resolved.primaryEntry?.rank) el.dataset.rank = String(resolved.primaryEntry.rank);
         const insideNativeRuby = Boolean(textNode.parentElement?.closest("ruby"));
-        if (readingHtml && !insideNativeRuby) {
-          el.innerHTML = readingHtml;
+        if (readingSpec && !insideNativeRuby) {
+          applyWordReadingDom(el, tok.text, readingSpec);
         } else {
           el.textContent = tok.text;
         }
@@ -2813,7 +2828,7 @@ var VerbaHighlighter = class {
           continue;
         }
         const key = tok.targetWord;
-        const { statusAttr, readingHtml } = this.computeStatusAttr(key, tok.targetSurface, tok.targetLemma);
+        const { statusAttr, readingSpec } = this.computeStatusAttr(key, tok.targetSurface, tok.targetLemma);
         const el = document.createElement("verba-w");
         el.dataset.diglot = "1";
         el.dataset.orig = tok.originalText || tok.text;
@@ -2823,8 +2838,8 @@ var VerbaHighlighter = class {
         if (tok.targetLemma) el.dataset.lemma = tok.targetLemma;
         if (tok.entry?.rank) el.dataset.rank = String(tok.entry.rank);
         const insideNativeRuby = Boolean(textNode.parentElement?.closest("ruby"));
-        if (readingHtml && !insideNativeRuby) {
-          el.innerHTML = readingHtml;
+        if (readingSpec && !insideNativeRuby) {
+          applyWordReadingDom(el, tok.targetSurface, readingSpec);
         } else {
           el.textContent = tok.targetSurface;
         }
@@ -2897,15 +2912,15 @@ var VerbaHighlighter = class {
       const surface = el.dataset.w || el.textContent || "";
       const key = el.dataset.key || surface;
       const lemmaHint = el.dataset.lemma;
-      const { statusAttr, readingHtml } = this.computeStatusAttr(key, surface, lemmaHint);
+      const { statusAttr, readingSpec } = this.computeStatusAttr(key, surface, lemmaHint);
       if (el.dataset.diglot === "1" && statusAttr === "-1") {
         this.revertDiglotElement(el);
         continue;
       }
       el.dataset.s = statusAttr;
       const insideNativeRuby = Boolean(el.parentElement?.closest("ruby:not(.verba-ruby)"));
-      if (readingHtml && !insideNativeRuby) {
-        el.innerHTML = readingHtml;
+      if (readingSpec && !insideNativeRuby) {
+        applyWordReadingDom(el, surface, readingSpec);
       } else if (el.querySelector("ruby.verba-ruby")) {
         el.textContent = surface;
       }
@@ -3044,8 +3059,18 @@ var VerbaHighlighter = class {
     this.paragraphTimers.clear();
   }
 };
-function escapeHtml(str) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function applyWordReadingDom(el, surface, spec) {
+  const ruby = document.createElement("ruby");
+  ruby.className = "verba-ruby";
+  ruby.appendChild(document.createTextNode(spec.kanjiStem !== void 0 ? spec.kanjiStem : surface));
+  const rt = document.createElement("rt");
+  rt.textContent = spec.reading;
+  ruby.appendChild(rt);
+  if (spec.kanjiStem !== void 0 && spec.okurigana) {
+    el.replaceChildren(ruby, document.createTextNode(spec.okurigana));
+  } else {
+    el.replaceChildren(ruby);
+  }
 }
 
 // src/content/word-panel.ts
@@ -3511,7 +3536,9 @@ var VerbaWordPanel = class {
           <span>\u21C4 Woven in place of <b>"${esc(diglotOrig)}"</b></span>
           <button type="button" class="wp-btn-ghost" id="wp-diglot-revert" style="height:22px;padding:0 8px;font-size:11px;">Revert</button>
         </div>` : "";
-    this.el.innerHTML = `
+    setHtmlContent(
+      this.el,
+      `
       <div class="wp-top">
         <div class="wp-head">
           <span class="wp-word" ${genderAttr}>${esc(headword)}</span>
@@ -3541,7 +3568,8 @@ var VerbaWordPanel = class {
       ${ankiPickerHtml}
       ${toastHtml}
       ${gradesHtml}
-    `;
+    `
+    );
     this.bindEvents();
   }
   bindEvents() {
@@ -3887,7 +3915,9 @@ var VerbaReaderSuite = class {
     const paper = this.settings.readerTheme || "dark";
     this.readerEl.dataset.paper = paper;
     const fontStack = this.settings.readerFont === "sans" ? "var(--sans)" : this.settings.readerFont === "mono" ? "var(--mono)" : this.settings.readerFont === "custom" && this.settings.customFontName ? `"${this.settings.customFontName}", var(--serif)` : "var(--serif)";
-    this.readerEl.innerHTML = `
+    setHtmlContent(
+      this.readerEl,
+      `
       <div class="reader-bar">
         <span class="reader-bar-title">${esc2(title)}</span>
         <button type="button" class="wp-btn-ghost" data-paper-pick="white">White</button>
@@ -3910,7 +3940,8 @@ var VerbaReaderSuite = class {
           ${bodyHtml}
         </article>
       </div>
-    `;
+    `
+    );
     const articleBody = this.readerEl.querySelector("#rv-article-body");
     if (articleBody) {
       this.highlighter.scanAndHighlight(articleBody);
@@ -4015,7 +4046,9 @@ var VerbaReaderSuite = class {
         this.sentenceTranslationCache.set(current, trans);
       }
     }
-    this.sentenceModalEl.innerHTML = `
+    setHtmlContent(
+      this.sentenceModalEl,
+      `
       <div class="sentence-card" data-paper="${this.settings.readerTheme || "dark"}">
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--ink-3);">
           <span>Sentence ${this.sentenceIdx + 1} / ${this.sentences.length}</span>
@@ -4034,7 +4067,8 @@ var VerbaReaderSuite = class {
           <button type="button" class="wp-btn-ghost" id="sc-next">Next (D) \u203A</button>
         </div>
       </div>
-    `;
+    `
+    );
     const bodyEl = this.sentenceModalEl.querySelector("#sc-body");
     if (bodyEl) {
       this.highlighter.scanAndHighlight(bodyEl);
@@ -4134,7 +4168,9 @@ var VerbaReaderSuite = class {
       return;
     }
     this.ttsBarEl.hidden = false;
-    this.ttsBarEl.innerHTML = `
+    setHtmlContent(
+      this.ttsBarEl,
+      `
       <button type="button" class="island-btn" id="tts-prev" title="Previous sentence">\u23EE</button>
       <button type="button" class="island-btn" id="tts-toggle">${this.isReadingPaused ? "\u25B6 Resume" : "\u23F8 Pause"}</button>
       <button type="button" class="island-btn" id="tts-next" title="Next sentence">\u23ED</button>
@@ -4143,7 +4179,8 @@ var VerbaReaderSuite = class {
         ${[0.75, 1, 1.25, 1.5, 1.75, 2].map((sp) => `<option value="${sp}" ${this.settings.voiceSpeed === sp ? "selected" : ""}>${sp}\xD7</option>`).join("")}
       </select>
       <button type="button" class="island-btn" id="tts-stop" title="Stop Read Aloud (Esc)">\u2715</button>
-    `;
+    `
+    );
     this.ttsBarEl.querySelector("#tts-prev")?.addEventListener("click", () => {
       this.sentenceIdx = Math.max(0, this.sentenceIdx - 1);
       this.speakActiveSentenceLoop();
@@ -4163,7 +4200,9 @@ var VerbaReaderSuite = class {
   openAskAiModal(sentence, translation) {
     const cleanSent = sentence.trim() || this.sentences[this.sentenceIdx] || window.getSelection()?.toString().trim() || document.title;
     this.askModalEl.hidden = false;
-    this.askModalEl.innerHTML = `
+    setHtmlContent(
+      this.askModalEl,
+      `
       <div class="ask-box">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <b style="color:var(--ink);font-size:16px;">Ask your AI chat (${esc2(this.settings.askAiChatProvider)})</b>
@@ -4176,7 +4215,8 @@ var VerbaReaderSuite = class {
           <button type="button" class="wp-btn-sm" id="ask-submit">Ask \u2197</button>
         </div>
       </div>
-    `;
+    `
+    );
     const textarea = this.askModalEl.querySelector("#ask-input");
     textarea?.focus();
     const submit = () => {
@@ -5270,8 +5310,7 @@ function isLittleEndian() {
 }
 function isEvalSupported() {
   try {
-    new Function("");
-    return true;
+    return false;
   } catch {
     return false;
   }
@@ -16865,11 +16904,7 @@ var PDFWorker = class _PDFWorker {
       if (this.#mainThreadWorkerMessageHandler) {
         return this.#mainThreadWorkerMessageHandler;
       }
-      const worker = await import(
-        /*webpackIgnore: true*/
-        this.workerSrc
-      );
-      return worker.WorkerMessageHandler;
+      return this.#mainThreadWorkerMessageHandler;
     };
     return shadow(this, "_setupFakeWorkerGlobal", loader());
   }
@@ -26235,7 +26270,7 @@ async function renderPdfPrintedPage(bytes, pageNumber, container, scale = 1.35) 
   const doc = await __webpack_exports__getDocument({ data: bytes.slice() }).promise;
   const page = await doc.getPage(Math.max(1, Math.min(doc.numPages, pageNumber)));
   const viewport = page.getViewport({ scale });
-  container.innerHTML = "";
+  container.replaceChildren();
   const wrapper = document.createElement("div");
   wrapper.className = "pdf-printed-stage";
   wrapper.style.position = "relative";
@@ -26704,7 +26739,9 @@ var VerbaBooksApp = class {
       return b.folderId === this.activeFolderId;
     });
     const langOptsHtml = this.settings.learningLangs.map((c) => `<option value="${c}" ${c === lang ? "selected" : ""}>${esc3(LANG_MAP[c]?.name || c)}</option>`).join("");
-    this.rootEl.innerHTML = `
+    setHtmlContent(
+      this.rootEl,
+      `
       <header class="topbar">
         <div class="topbar-left">
           <a href="dashboard.html" class="brand">
@@ -26747,7 +26784,7 @@ var VerbaBooksApp = class {
             Unfiled (${this.books.filter((b) => !b.folderId).length})
           </button>
           ${this.folders.map(
-      (f) => `
+        (f) => `
             <button
               type="button"
               class="folder-pill ${this.activeFolderId === f.id ? "active" : ""}"
@@ -26757,19 +26794,19 @@ var VerbaBooksApp = class {
               \u{1F4C1} ${esc3(f.name)} (${this.books.filter((b) => b.folderId === f.id).length})
             </button>
           `
-    ).join("")}
+      ).join("")}
         </div>
 
         ${filteredBooks.length === 0 ? `<div class="drop-hint">No books in this view yet. Click <strong>+ Add book</strong>, <strong>Paste text</strong>, or drop EPUB / PDF / TXT / SRT files anywhere here.</div>` : `<div class="books-grid">
               ${filteredBooks.map((b) => {
-      const sampleText = b.chapters.map((c) => c.text).join("\n");
-      const st = this.computeTextWordStats(sampleText);
-      const chPct = Math.round(
-        (b.chapterIndex + Math.min(1, b.scrollRatio)) / Math.max(1, b.chapters.length) * 100
-      );
-      const isSel = this.selectedBookIds.has(b.id);
-      const folderName = b.folderId ? this.folders.find((f) => f.id === b.folderId)?.name : "";
-      return `
+        const sampleText = b.chapters.map((c) => c.text).join("\n");
+        const st = this.computeTextWordStats(sampleText);
+        const chPct = Math.round(
+          (b.chapterIndex + Math.min(1, b.scrollRatio)) / Math.max(1, b.chapters.length) * 100
+        );
+        const isSel = this.selectedBookIds.has(b.id);
+        const folderName = b.folderId ? this.folders.find((f) => f.id === b.folderId)?.name : "";
+        return `
                   <article
                     class="book-card ${isSel ? "selected" : ""}"
                     data-book-id="${esc3(b.id)}"
@@ -26810,13 +26847,14 @@ var VerbaBooksApp = class {
                     ` : ""}
                   </article>
                 `;
-    }).join("")}
+      }).join("")}
             </div>
             <div class="drop-hint" id="drop-footer-hint">Drop EPUB, PDF, TXT, SRT/VTT/ASS, or CBZ files anywhere on this page to add them.</div>`}
       </main>
 
       ${this.renderModalsAndToast()}
-    `;
+    `
+    );
     this.bindShelfEvents();
   }
   renderBookReader() {
@@ -26827,7 +26865,9 @@ var VerbaBooksApp = class {
     const isBookmarkedHere = this.bookmarks.some((bm) => bm.chapterIndex === chIdx);
     const fontStack = this.settings.readerFont === "sans" ? "var(--sans)" : this.settings.readerFont === "mono" ? "var(--mono)" : this.settings.readerFont === "custom" && this.settings.customFontName ? `"${this.settings.customFontName}", var(--serif)` : "var(--serif)";
     const langOpts = getLangOptionsFromSettings(this.settings, this.settings.activeLang);
-    this.rootEl.innerHTML = `
+    setHtmlContent(
+      this.rootEl,
+      `
       <div class="book-reader-shell" data-paper="${paper}">
         <header class="topbar">
           <div class="topbar-left">
@@ -26880,7 +26920,8 @@ var VerbaBooksApp = class {
         ${this.aaOpen ? this.renderAaPopover(book, langOpts.readingsEnabled) : ""}
         ${this.drawerOpen ? this.renderBookDrawer(book, chIdx) : ""}
       </div>
-    `;
+    `
+    );
     const contentEl = document.getElementById("book-chapter-content");
     if (book.format === "pdf" && this.pdfViewMode === "printed") {
       getBookRawBytes(book.id).then(async (bytes) => {

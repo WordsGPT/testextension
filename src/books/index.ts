@@ -28,6 +28,7 @@ import { segmentText } from '../shared/segmenter';
 import { sendBgMessage } from '../shared/messaging';
 import { getExtApi } from '../shared/webext';
 import { speakText } from '../shared/tts';
+import { setHtmlContent } from '../shared/dom';
 import { SHADOW_UI_CSS } from '../content/styles';
 import { VerbaHighlighter } from '../content/highlighter';
 import { VerbaWordPanel } from '../content/word-panel';
@@ -370,7 +371,9 @@ class VerbaBooksApp {
       .map((c) => `<option value="${c}" ${c === lang ? 'selected' : ''}>${esc(LANG_MAP[c]?.name || c)}</option>`)
       .join('');
 
-    this.rootEl.innerHTML = `
+    setHtmlContent(
+      this.rootEl,
+      `
       <header class="topbar">
         <div class="topbar-left">
           <a href="dashboard.html" class="brand">
@@ -506,7 +509,8 @@ class VerbaBooksApp {
       </main>
 
       ${this.renderModalsAndToast()}
-    `;
+    `
+    );
 
     this.bindShelfEvents();
   }
@@ -529,7 +533,9 @@ class VerbaBooksApp {
 
     const langOpts = getLangOptionsFromSettings(this.settings, this.settings.activeLang);
 
-    this.rootEl.innerHTML = `
+    setHtmlContent(
+      this.rootEl,
+      `
       <div class="book-reader-shell" data-paper="${paper}">
         <header class="topbar">
           <div class="topbar-left">
@@ -590,7 +596,8 @@ class VerbaBooksApp {
         ${this.aaOpen ? this.renderAaPopover(book, langOpts.readingsEnabled) : ''}
         ${this.drawerOpen ? this.renderBookDrawer(book, chIdx) : ''}
       </div>
-    `;
+    `
+    );
 
     const contentEl = document.getElementById('book-chapter-content')!;
     if (book.format === 'pdf' && this.pdfViewMode === 'printed') {

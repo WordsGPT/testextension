@@ -2528,7 +2528,7 @@ button {
           }
         }
       }
-      let readingHtml;
+      let readingSpec;
       if (this.langOpts.readingsEnabled) {
         const scope = this.langOpts.readingScope;
         const shouldAnnotate = scope === "every_word" || scope === "new_only" && statusNum === 0 || scope === "new_learning" && statusNum >= 0 && statusNum <= 3;
@@ -2541,19 +2541,11 @@ button {
             entry?.r2
           );
           if (formatted?.reading) {
-            if (formatted.kanjiStem !== void 0) {
-              readingHtml = `<ruby class="verba-ruby">${escapeHtml(formatted.kanjiStem)}<rt>${escapeHtml(
-                formatted.reading
-              )}</rt></ruby>${escapeHtml(formatted.okurigana || "")}`;
-            } else {
-              readingHtml = `<ruby class="verba-ruby">${escapeHtml(surface)}<rt>${escapeHtml(
-                formatted.reading
-              )}</rt></ruby>`;
-            }
+            readingSpec = formatted;
           }
         }
       }
-      return { statusAttr, readingHtml };
+      return { statusAttr, readingSpec };
     }
     scanAndHighlight(root = this.rootContainer) {
       if (this.diglotMode && !this.isBookOrReader) {
@@ -2605,7 +2597,7 @@ button {
             overrides
           );
           const key = phrases.has(tok.normalized) ? tok.normalized : phrases.has(tok.text) ? tok.text : resolved.key;
-          const { statusAttr, readingHtml } = this.computeStatusAttr(key, tok.text, tok.lemmaHint);
+          const { statusAttr, readingSpec } = this.computeStatusAttr(key, tok.text, tok.lemmaHint);
           const el = document.createElement("verba-w");
           el.dataset.w = tok.text;
           el.dataset.key = key;
@@ -2613,8 +2605,8 @@ button {
           if (tok.lemmaHint) el.dataset.lemma = tok.lemmaHint;
           if (resolved.primaryEntry?.rank) el.dataset.rank = String(resolved.primaryEntry.rank);
           const insideNativeRuby = Boolean(textNode.parentElement?.closest("ruby"));
-          if (readingHtml && !insideNativeRuby) {
-            el.innerHTML = readingHtml;
+          if (readingSpec && !insideNativeRuby) {
+            applyWordReadingDom(el, tok.text, readingSpec);
           } else {
             el.textContent = tok.text;
           }
@@ -2675,7 +2667,7 @@ button {
             continue;
           }
           const key = tok.targetWord;
-          const { statusAttr, readingHtml } = this.computeStatusAttr(key, tok.targetSurface, tok.targetLemma);
+          const { statusAttr, readingSpec } = this.computeStatusAttr(key, tok.targetSurface, tok.targetLemma);
           const el = document.createElement("verba-w");
           el.dataset.diglot = "1";
           el.dataset.orig = tok.originalText || tok.text;
@@ -2685,8 +2677,8 @@ button {
           if (tok.targetLemma) el.dataset.lemma = tok.targetLemma;
           if (tok.entry?.rank) el.dataset.rank = String(tok.entry.rank);
           const insideNativeRuby = Boolean(textNode.parentElement?.closest("ruby"));
-          if (readingHtml && !insideNativeRuby) {
-            el.innerHTML = readingHtml;
+          if (readingSpec && !insideNativeRuby) {
+            applyWordReadingDom(el, tok.targetSurface, readingSpec);
           } else {
             el.textContent = tok.targetSurface;
           }
@@ -2759,15 +2751,15 @@ button {
         const surface = el.dataset.w || el.textContent || "";
         const key = el.dataset.key || surface;
         const lemmaHint = el.dataset.lemma;
-        const { statusAttr, readingHtml } = this.computeStatusAttr(key, surface, lemmaHint);
+        const { statusAttr, readingSpec } = this.computeStatusAttr(key, surface, lemmaHint);
         if (el.dataset.diglot === "1" && statusAttr === "-1") {
           this.revertDiglotElement(el);
           continue;
         }
         el.dataset.s = statusAttr;
         const insideNativeRuby = Boolean(el.parentElement?.closest("ruby:not(.verba-ruby)"));
-        if (readingHtml && !insideNativeRuby) {
-          el.innerHTML = readingHtml;
+        if (readingSpec && !insideNativeRuby) {
+          applyWordReadingDom(el, surface, readingSpec);
         } else if (el.querySelector("ruby.verba-ruby")) {
           el.textContent = surface;
         }
@@ -2906,8 +2898,41 @@ button {
       this.paragraphTimers.clear();
     }
   };
-  function escapeHtml(str) {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  function applyWordReadingDom(el, surface, spec) {
+    const ruby = document.createElement("ruby");
+    ruby.className = "verba-ruby";
+    ruby.appendChild(document.createTextNode(spec.kanjiStem !== void 0 ? spec.kanjiStem : surface));
+    const rt = document.createElement("rt");
+    rt.textContent = spec.reading;
+    ruby.appendChild(rt);
+    if (spec.kanjiStem !== void 0 && spec.okurigana) {
+      el.replaceChildren(ruby, document.createTextNode(spec.okurigana));
+    } else {
+      el.replaceChildren(ruby);
+    }
+  }
+
+  // src/shared/dom.ts
+  var sharedParser = null;
+  function setHtmlContent(el, html) {
+    if (!html) {
+      el.replaceChildren();
+      return;
+    }
+    if (!sharedParser) {
+      sharedParser = new DOMParser();
+    }
+    const doc = sharedParser.parseFromString(`<!doctype html><html><body>${html}</body></html>`, "text/html");
+    doc.body.querySelectorAll("script, iframe, object, embed").forEach((n) => n.remove());
+    doc.body.querySelectorAll("*").forEach((elem) => {
+      for (const attr of Array.from(elem.attributes)) {
+        if (attr.name.toLowerCase().startsWith("on")) {
+          elem.removeAttribute(attr.name);
+        }
+      }
+    });
+    const nodes = Array.from(doc.body.childNodes).map((n) => document.importNode(n, true));
+    el.replaceChildren(...nodes);
   }
 
   // src/content/island.ts
@@ -2948,10 +2973,13 @@ button {
       const toName = LANG_MAP[toLang]?.name || toLang;
       const fromName = LANG_MAP[fromLang]?.name || fromLang;
       this.switchNoteEl.hidden = false;
-      this.switchNoteEl.innerHTML = `
+      setHtmlContent(
+        this.switchNoteEl,
+        `
       <span>Switched to <b>${toName}</b></span>
       <button type="button" class="island-btn" id="verba-switch-back">Back to ${fromName}</button>
-    `;
+    `
+      );
       this.switchNoteEl.querySelector("#verba-switch-back")?.addEventListener("click", () => {
         this.switchNoteEl.hidden = true;
         this.callbacks.onSwitchLanguage(fromLang);
@@ -2980,7 +3008,9 @@ button {
       ).join("")}
         </select>` : "";
       const diglotStatHtml = this.diglotActive || this.counts.diglotWords > 0 ? `<span class="island-stat" title="Target-language words woven into this page"><i class="island-dot diglot"></i><b id="island-diglot-count">${this.counts.diglotWords}</b> woven</span>` : "";
-      this.el.innerHTML = `
+      setHtmlContent(
+        this.el,
+        `
       <button type="button" class="island-btn" id="island-tally-toggle" title="Today's tally">${this.tallyOpen ? "\u25BE" : "\u25B4"}</button>
       ${langBadgeHtml}
       <button type="button" class="island-btn" id="island-reader-btn" title="Reader View (Shift+L)">\u{1F4D6}</button>
@@ -2990,7 +3020,8 @@ button {
       <span class="island-stat" title="Learning words on this page"><i class="island-dot learn"></i><b id="island-learn-count">${this.counts.learningWords}</b> learning</span>
       <span class="island-stat" title="Total known vocabulary in ${LANG_MAP[this.settings.activeLang]?.name || this.settings.activeLang}">Vocabulary <b id="island-vocab-count">${this.totalKnownCount.toLocaleString()}</b></span>
       <button type="button" class="island-btn" id="island-know-all" title="Mark all new words on this page known (Shift+K)">Know all</button>
-    `;
+    `
+      );
       this.el.querySelector("#island-tally-toggle")?.addEventListener("click", () => {
         this.tallyOpen = !this.tallyOpen;
         this.render();
@@ -3011,13 +3042,16 @@ button {
       this.tallyEl.hidden = !this.tallyOpen;
       if (this.tallyOpen) {
         const mins = Math.round(this.todayStats.secondsListened / 60);
-        this.tallyEl.innerHTML = `
+        setHtmlContent(
+          this.tallyEl,
+          `
         <div style="font-weight:600;color:var(--ink);margin-bottom:6px;">Today\u2019s tally \xB7 ${LANG_MAP[this.settings.activeLang]?.name || this.settings.activeLang}</div>
         <div class="tally-row"><span>Marked known today</span><b>${this.todayStats.wordsMarkedKnown}</b></div>
         <div class="tally-row"><span>Frequent known today</span><b>${this.todayStats.frequentMarkedKnown}</b></div>
         <div class="tally-row"><span>Words read today</span><b>${this.todayStats.wordsRead.toLocaleString()}</b></div>
         <div class="tally-row"><span>Listening today</span><b>${mins} min</b></div>
-      `;
+      `
+        );
       }
     }
   };
@@ -3485,7 +3519,9 @@ button {
           <span>\u21C4 Woven in place of <b>"${esc(diglotOrig)}"</b></span>
           <button type="button" class="wp-btn-ghost" id="wp-diglot-revert" style="height:22px;padding:0 8px;font-size:11px;">Revert</button>
         </div>` : "";
-      this.el.innerHTML = `
+      setHtmlContent(
+        this.el,
+        `
       <div class="wp-top">
         <div class="wp-head">
           <span class="wp-word" ${genderAttr}>${esc(headword)}</span>
@@ -3515,7 +3551,8 @@ button {
       ${ankiPickerHtml}
       ${toastHtml}
       ${gradesHtml}
-    `;
+    `
+      );
       this.bindEvents();
     }
     bindEvents() {
@@ -3861,7 +3898,9 @@ My question: ${params.userQuestion.trim()}`;
       const paper = this.settings.readerTheme || "dark";
       this.readerEl.dataset.paper = paper;
       const fontStack = this.settings.readerFont === "sans" ? "var(--sans)" : this.settings.readerFont === "mono" ? "var(--mono)" : this.settings.readerFont === "custom" && this.settings.customFontName ? `"${this.settings.customFontName}", var(--serif)` : "var(--serif)";
-      this.readerEl.innerHTML = `
+      setHtmlContent(
+        this.readerEl,
+        `
       <div class="reader-bar">
         <span class="reader-bar-title">${esc2(title)}</span>
         <button type="button" class="wp-btn-ghost" data-paper-pick="white">White</button>
@@ -3884,7 +3923,8 @@ My question: ${params.userQuestion.trim()}`;
           ${bodyHtml}
         </article>
       </div>
-    `;
+    `
+      );
       const articleBody = this.readerEl.querySelector("#rv-article-body");
       if (articleBody) {
         this.highlighter.scanAndHighlight(articleBody);
@@ -3989,7 +4029,9 @@ My question: ${params.userQuestion.trim()}`;
           this.sentenceTranslationCache.set(current, trans);
         }
       }
-      this.sentenceModalEl.innerHTML = `
+      setHtmlContent(
+        this.sentenceModalEl,
+        `
       <div class="sentence-card" data-paper="${this.settings.readerTheme || "dark"}">
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--ink-3);">
           <span>Sentence ${this.sentenceIdx + 1} / ${this.sentences.length}</span>
@@ -4008,7 +4050,8 @@ My question: ${params.userQuestion.trim()}`;
           <button type="button" class="wp-btn-ghost" id="sc-next">Next (D) \u203A</button>
         </div>
       </div>
-    `;
+    `
+      );
       const bodyEl = this.sentenceModalEl.querySelector("#sc-body");
       if (bodyEl) {
         this.highlighter.scanAndHighlight(bodyEl);
@@ -4108,7 +4151,9 @@ My question: ${params.userQuestion.trim()}`;
         return;
       }
       this.ttsBarEl.hidden = false;
-      this.ttsBarEl.innerHTML = `
+      setHtmlContent(
+        this.ttsBarEl,
+        `
       <button type="button" class="island-btn" id="tts-prev" title="Previous sentence">\u23EE</button>
       <button type="button" class="island-btn" id="tts-toggle">${this.isReadingPaused ? "\u25B6 Resume" : "\u23F8 Pause"}</button>
       <button type="button" class="island-btn" id="tts-next" title="Next sentence">\u23ED</button>
@@ -4117,7 +4162,8 @@ My question: ${params.userQuestion.trim()}`;
         ${[0.75, 1, 1.25, 1.5, 1.75, 2].map((sp) => `<option value="${sp}" ${this.settings.voiceSpeed === sp ? "selected" : ""}>${sp}\xD7</option>`).join("")}
       </select>
       <button type="button" class="island-btn" id="tts-stop" title="Stop Read Aloud (Esc)">\u2715</button>
-    `;
+    `
+      );
       this.ttsBarEl.querySelector("#tts-prev")?.addEventListener("click", () => {
         this.sentenceIdx = Math.max(0, this.sentenceIdx - 1);
         this.speakActiveSentenceLoop();
@@ -4137,7 +4183,9 @@ My question: ${params.userQuestion.trim()}`;
     openAskAiModal(sentence, translation) {
       const cleanSent = sentence.trim() || this.sentences[this.sentenceIdx] || window.getSelection()?.toString().trim() || document.title;
       this.askModalEl.hidden = false;
-      this.askModalEl.innerHTML = `
+      setHtmlContent(
+        this.askModalEl,
+        `
       <div class="ask-box">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <b style="color:var(--ink);font-size:16px;">Ask your AI chat (${esc2(this.settings.askAiChatProvider)})</b>
@@ -4150,7 +4198,8 @@ My question: ${params.userQuestion.trim()}`;
           <button type="button" class="wp-btn-sm" id="ask-submit">Ask \u2197</button>
         </div>
       </div>
-    `;
+    `
+      );
       const textarea = this.askModalEl.querySelector("#ask-input");
       textarea?.focus();
       const submit = () => {
@@ -4464,11 +4513,14 @@ My question: ${params.userQuestion.trim()}`;
       this.pillEl.style.left = `${Math.max(12, Math.round(rect.left + 12))}px`;
       const hasSubs = this.cues.length > 0;
       const label = !this.settings.captionsEnabled ? "Captions OFF" : hasSubs ? `Captions ON \xB7 ${this.cues.length}` : `no ${this.settings.activeLang.toUpperCase()}`;
-      this.pillEl.innerHTML = `
+      setHtmlContent(
+        this.pillEl,
+        `
       <button type="button" class="island-btn" id="cc-gear-btn" title="Caption settings">\u2699</button>
       <button type="button" class="island-btn" id="cc-toggle-btn" title="Toggle Captions (C)">${esc3(label)}</button>
       <button type="button" class="island-btn" id="cc-drawer-btn" title="Transcript & Words in this video (W)">\u2630</button>
-    `;
+    `
+      );
       this.pillEl.querySelector("#cc-gear-btn")?.addEventListener("click", () => {
         this.menuOpen = !this.menuOpen;
         this.renderMenu();
@@ -4514,7 +4566,9 @@ My question: ${params.userQuestion.trim()}`;
       const transHidden = this.settings.translationMode === "hide" && this.peekStep < 2;
       const bgAlpha = (this.settings.subtitleBgOpacity / 100).toFixed(2);
       const fontCss = this.settings.subtitleFont === "serif" ? "var(--serif)" : this.settings.subtitleFont === "mono" ? "var(--mono)" : "var(--sans)";
-      this.stageEl.innerHTML = `
+      setHtmlContent(
+        this.stageEl,
+        `
       <div class="vc-box" style="background:rgb(17 17 16 / ${bgAlpha});font-family:${fontCss};">
         ${subHidden ? `<div style="color:var(--ink-3);font-size:13px;">[Subtitle hidden \xB7 press E to peek]</div>` : `<div class="vc-line ${subBlurred ? "blurred" : ""}" id="cc-sub-line" data-size="${this.settings.subtitleSize}">${esc3(cue.text)}</div>`}
         ${cue.translation && !transHidden ? `<div class="vc-trans ${transBlurred ? "blurred" : ""}" data-size="${this.settings.translationSize}">${esc3(cue.translation)}</div>` : ""}
@@ -4525,7 +4579,8 @@ My question: ${params.userQuestion.trim()}`;
         <button type="button" class="vc-mini-btn" id="cc-next" title="Next line (D)">\u23ED</button>
         <button type="button" class="vc-mini-btn" id="cc-loop" title="Loop line" style="${this.loopCurrentLine ? "border-color:#3b82f6;color:#93c5fd;" : ""}">\u221E</button>
       </div>
-    `;
+    `
+      );
       const lineEl = this.stageEl.querySelector("#cc-sub-line");
       if (lineEl) {
         this.highlighter.scanAndHighlight(lineEl);
@@ -4741,7 +4796,9 @@ My question: ${params.userQuestion.trim()}`;
       const pillRect = this.pillEl.getBoundingClientRect();
       this.menuEl.style.top = `${Math.round(pillRect.bottom + 6)}px`;
       this.menuEl.style.left = `${Math.max(12, Math.round(pillRect.left))}px`;
-      this.menuEl.innerHTML = `
+      setHtmlContent(
+        this.menuEl,
+        `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <b style="color:var(--ink)">Dual Captions Settings</b>
         <button type="button" class="wp-icon-btn" id="cc-menu-close">\u2715</button>
@@ -4799,7 +4856,8 @@ My question: ${params.userQuestion.trim()}`;
           <input type="file" id="cc-load-srt" accept=".srt,.vtt,.ass" hidden>
         </label>
       </div>
-    `;
+    `
+      );
       this.menuEl.querySelector("#cc-menu-close")?.addEventListener("click", () => {
         this.menuOpen = false;
         this.menuEl.hidden = true;
@@ -4868,7 +4926,9 @@ My question: ${params.userQuestion.trim()}`;
     renderDrawer() {
       if (!this.drawerOpen) return;
       if (this.drawerTab === "transcript") {
-        this.drawerEl.innerHTML = `
+        setHtmlContent(
+          this.drawerEl,
+          `
         <div class="cc-drawer-head">
           <button type="button" class="wp-tab" aria-selected="true" id="dr-tab-tr">Transcript</button>
           <button type="button" class="wp-tab" aria-selected="false" id="dr-tab-wd">Words in video (W)</button>
@@ -4877,13 +4937,14 @@ My question: ${params.userQuestion.trim()}`;
         </div>
         <div class="cc-drawer-list" id="dr-list">
           ${this.cues.map(
-          (c, idx) => `<div class="cc-cue-item ${idx === this.activeCueIdx ? "active" : ""}" data-cue-idx="${idx}">
+            (c, idx) => `<div class="cc-cue-item ${idx === this.activeCueIdx ? "active" : ""}" data-cue-idx="${idx}">
                 <span class="cc-cue-time">${formatTime(c.start)}</span>
                 <span class="cc-cue-text">${esc3(c.text)}</span>
               </div>`
-        ).join("")}
+          ).join("")}
         </div>
-      `;
+      `
+        );
         const listEl = this.drawerEl.querySelector("#dr-list");
         if (listEl) {
           this.highlighter.scanAndHighlight(listEl);
@@ -4933,7 +4994,9 @@ My question: ${params.userQuestion.trim()}`;
           if (this.wordsFilter === "both") return ["0", "1", "2", "3", "4"].includes(it.status);
           return true;
         }).sort((a, b) => b.count - a.count);
-        this.drawerEl.innerHTML = `
+        setHtmlContent(
+          this.drawerEl,
+          `
         <div class="cc-drawer-head">
           <button type="button" class="wp-tab" aria-selected="false" id="dr-tab-tr">Transcript</button>
           <button type="button" class="wp-tab" aria-selected="true" id="dr-tab-wd">Words (${items.length})</button>
@@ -4941,20 +5004,21 @@ My question: ${params.userQuestion.trim()}`;
         </div>
         <div style="display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid var(--border-subtle);">
           ${["both", "new", "learning", "all"].map(
-          (f) => `<button type="button" class="wp-btn-ghost dr-chip" data-f="${f}" style="${this.wordsFilter === f ? "border-color:#3b82f6;color:var(--ink);" : ""}">${f === "both" ? "New + Learning" : f[0].toUpperCase() + f.slice(1)}</button>`
-        ).join("")}
+            (f) => `<button type="button" class="wp-btn-ghost dr-chip" data-f="${f}" style="${this.wordsFilter === f ? "border-color:#3b82f6;color:var(--ink);" : ""}">${f === "both" ? "New + Learning" : f[0].toUpperCase() + f.slice(1)}</button>`
+          ).join("")}
         </div>
         <div class="cc-drawer-list" id="dr-words-list">
           ${items.map(
-          (it) => `<div class="cc-cue-item" style="justify-content:space-between;align-items:center;">
+            (it) => `<div class="cc-cue-item" style="justify-content:space-between;align-items:center;">
                 <span><verba-w data-w="${esc3(it.word)}" data-key="${esc3(it.word)}" data-s="${esc3(it.status)}">${esc3(
-            it.word
-          )}</verba-w> <span style="color:var(--ink-3);font-size:12px;">\xD7${it.count}</span></span>
+              it.word
+            )}</verba-w> <span style="color:var(--ink-3);font-size:12px;">\xD7${it.count}</span></span>
                 <button type="button" class="wp-icon-btn dr-jump-cue" data-cue="${it.firstCueIdx}" title="Jump to line">\u25B6</button>
               </div>`
-        ).join("")}
+          ).join("")}
         </div>
-      `;
+      `
+        );
         const wList = this.drawerEl.querySelector("#dr-words-list");
         if (wList) this.bindWordInteractions(wList);
         this.drawerEl.querySelectorAll(".dr-chip").forEach((b) => {
@@ -5018,10 +5082,13 @@ My question: ${params.userQuestion.trim()}`;
       wrap.id = "verba-yt-translate";
       wrap.dataset.verbaIgnore = "1";
       wrap.style.cssText = "display:inline-flex;gap:6px;margin-left:8px;align-items:center;";
-      wrap.innerHTML = `
+      setHtmlContent(
+        wrap,
+        `
       <button type="button" id="verba-yt-tr-btn" style="height:32px;padding:0 10px;border-radius:999px;border:1px solid #3b3a37;background:#191918;color:#f2f0eb;font-size:12px;cursor:pointer;">Translate</button>
       <button type="button" id="verba-yt-cc-btn" style="height:32px;padding:0 10px;border-radius:999px;border:1px solid #3b3a37;background:#191918;color:#f2f0eb;font-size:12px;cursor:pointer;">Subtitles</button>
-    `;
+    `
+      );
       searchForm.parentElement?.appendChild(wrap);
       wrap.querySelector("#verba-yt-tr-btn")?.addEventListener("click", async () => {
         const inp = document.querySelector('input#search, input[name="search_query"]');
