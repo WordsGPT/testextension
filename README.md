@@ -81,20 +81,27 @@ Instead, load it via **`about:debugging`**:
 
 ---
 
-## Building from Source (Optional)
+## Building from Source (Mozilla AMO Reviewer Instructions)
 
-If you modify the TypeScript source in `src/` or the dictionary generators in `scripts/`:
+### Environment Requirements
+- **OS**: Linux, macOS, or Windows
+- **Node.js**: `v20.x` or `v22.x` LTS (includes `npm`)
 
+### Step-by-Step Build Reproduction
 ```bash
-npm install
-npm run typecheck
+npm ci
 npm run build
-npm run package:firefox
 ```
+
+Running `npm run build` executes:
+1. `npm run build:icons` (`node scripts/build-icons.mjs`) — generates PNG/SVG icons in `icons/`
+2. `npm run build:dicts` (`node scripts/build-dictionaries.mjs`) — generates offline dictionaries in `dictionaries/` and sample reading/subtitle files in `samples/`
+3. `npm run build:js` (`node scripts/build.mjs`) — compiles TypeScript (`src/**/*.ts`) via `esbuild` into `dist/*.js` and copies `dist/pdf.worker.min.mjs`
+4. `npm run package:firefox` (`node scripts/package-firefox.mjs`) — packages the reproducible Firefox add-on archive at `dist/verba-firefox.zip`
 
 ### Running Tests
 ```bash
+npm run typecheck
 npm run test:unit
 npm run test:e2e
-npm run lint:firefox
 ```

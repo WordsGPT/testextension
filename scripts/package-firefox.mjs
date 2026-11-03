@@ -64,3 +64,43 @@ const zipped = zipSync(filesToPack, { level: 6 });
 fs.mkdirSync(path.dirname(outZip), { recursive: true });
 fs.writeFileSync(outZip, zipped);
 console.log(`✓ Packaged Firefox MV3 archive (${Object.keys(filesToPack).length} files) -> dist/verba-firefox.zip`);
+
+// Also generate a clean source archive (dist/verba-source.zip) for Mozilla AMO Reviewer submission
+const outSourceZip = path.join(rootDir, 'dist', 'verba-source.zip');
+const sourceFiles = {};
+
+function addSourceFile(relPath) {
+  const abs = path.join(rootDir, relPath);
+  if (!fs.existsSync(abs) || fs.statSync(abs).isDirectory()) return;
+  sourceFiles[relPath.replace(/\\/g, '/')] = new Uint8Array(fs.readFileSync(abs));
+}
+
+function addSourceDir(relDir) {
+  const absDir = path.join(rootDir, relDir);
+  if (!fs.existsSync(absDir)) return;
+  for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
+    const childRel = path.posix.join(relDir, entry.name);
+    if (entry.isDirectory()) {
+      addSourceDir(childRel);
+    } else {
+      addSourceFile(childRel);
+    }
+  }
+}
+
+addSourceFile('package.json');
+addSourceFile('package-lock.json');
+addSourceFile('tsconfig.json');
+addSourceFile('manifest.json');
+addSourceFile('README.md');
+addSourceFile('popup.html');
+addSourceFile('dashboard.html');
+addSourceFile('books.html');
+addSourceFile('video.html');
+addSourceDir('scripts');
+addSourceDir('src');
+addSourceDir('tests');
+
+const zippedSource = zipSync(sourceFiles, { level: 6 });
+fs.writeFileSync(outSourceZip, zippedSource);
+console.log(`✓ Packaged AMO Reviewer source archive (${Object.keys(sourceFiles).length} files) -> dist/verba-source.zip`);
